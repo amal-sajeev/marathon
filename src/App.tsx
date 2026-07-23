@@ -57,7 +57,7 @@ export function App() {
             textShadow: "0 0 12px rgba(56,230,255,0.55)",
           }}
         >
-          RPGtask
+          Marathon
         </span>
         <div style={{ display: "flex", gap: 8 }}>
           <button

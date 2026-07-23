@@ -42,7 +42,7 @@ export function Welcome() {
       >
         <div className="welcome">
           <img className="welcome__crest" src={`${import.meta.env.BASE_URL}icons/icon.svg`} alt="" />
-          <div className="welcome__title">Welcome to RPGtask</div>
+          <div className="welcome__title">Welcome to Marathon</div>
           <div className="welcome__text">
             This is your quest board. Finish real-life tasks, earn XP and gold,
             level up. The best part: you don't have to invent the quests. Your

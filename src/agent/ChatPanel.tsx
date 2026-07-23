@@ -17,6 +17,10 @@ const TOOL_VERB: Record<string, string> = {
   complete_daily: "checked off a daily",
   complete_todo: "checked off a to-do",
   score_habit: "logged a habit",
+  remember: "held onto something",
+  update_memory: "revised a memory",
+  forget_memory: "let a memory go",
+  list_memories: "recalled what she knows",
 };
 
 const QUICK_PROMPTS = [

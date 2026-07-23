@@ -76,10 +76,26 @@ export interface Stats {
   timesFallen: number;
 }
 
+/** A lasting, personal fact Leela keeps about the user so she can be warm and
+ *  specific across sessions. Persisted in the save file. */
+export interface Memory {
+  id: string;
+  /** the detail itself, phrased from Leela's perspective ("Their sister's name is Mara"). */
+  text: string;
+  /** loose grouping: person, preference, goal, wellbeing, milestone, other */
+  category?: string;
+  /** 1..3; higher means more central to who they are, kept in context first */
+  importance?: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface GameState {
   character: Character;
   tasks: Task[];
   stats: Stats;
+  /** lasting personal details Leela remembers about the user */
+  memories: Memory[];
   /** ISO date (yyyy-mm-dd) that cron last ran */
   lastCron?: string;
   createdAt: string;

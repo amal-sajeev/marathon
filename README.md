@@ -1,4 +1,4 @@
-# RPGtask
+# Marathon
 
 A cozy, installable **habit & task RPG** in the spirit of Habitica, with one big twist: you don't have to invent your own quests. An AI companion (powered by your own Mistral key, with a warm Cortana-ish personality) talks to you, pulls tasks/habits/dailies/rewards out of you, and sets them up for you.
 
@@ -42,7 +42,7 @@ If neither is set, the app calls `https://api.mistral.ai/v1/chat/completions` di
 
 ## Save files & syncing
 
-RPGtask always keeps a local backup in your browser (IndexedDB). To make progress portable:
+Marathon always keeps a local backup in your browser (IndexedDB). To make progress portable:
 
 - On Chromium browsers (desktop, **Android Chrome**), Settings shows **New save file** / **Load save file**. These use the File System Access API to let you pick where your `hero.rpgsave` lives. The app then **auto-saves** to that file and reopens it next time.
 - Put that file in a folder synced by Google Drive / Dropbox / Syncthing, and load the same file on another device to sync — just like copying an RPG save.

@@ -69,5 +69,5 @@ export function decodeSave(raw: string): DecodedSave {
       version: 0,
     };
   }
-  throw new Error("This does not look like an RPGtask save file.");
+  throw new Error("This does not look like a Marathon save file.");
 }

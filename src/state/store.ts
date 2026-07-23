@@ -7,6 +7,7 @@ import type {
   Difficulty,
   GameState,
   Habit,
+  Memory,
   Reward,
   Settings,
   Stats,
@@ -51,6 +52,7 @@ export function freshState(name?: string): GameState {
     character: freshCharacter(name),
     tasks: [],
     stats: freshStats(),
+    memories: [],
     createdAt: nowIso(),
     lastCron: todayStr(),
   };
@@ -61,6 +63,7 @@ export function normalizeState(state: GameState): GameState {
   return {
     ...state,
     stats: { ...freshStats(), ...(state.stats ?? {}) },
+    memories: Array.isArray(state.memories) ? state.memories : [],
   };
 }
 
@@ -130,6 +133,15 @@ interface StoreState extends UIState {
 
   // character
   renameCharacter: (name: string) => void;
+
+  // memories
+  addMemory: (
+    text: string,
+    category?: string,
+    importance?: number,
+  ) => Memory | null;
+  updateMemory: (id: string, patch: Partial<Omit<Memory, "id" | "createdAt">>) => void;
+  deleteMemory: (id: string) => void;
 }
 
 export interface NewTaskInput {
@@ -505,5 +517,49 @@ export const useStore = create<StoreState>((set, get) => ({
   renameCharacter: (name) =>
     set((s) => ({
       state: { ...s.state, character: { ...s.state.character, name } },
+    })),
+
+  addMemory: (text, category, importance) => {
+    const clean = text.trim();
+    if (!clean) return null;
+    const existing = get().state.memories;
+    // Skip near-duplicates (case-insensitive exact match).
+    const dup = existing.find(
+      (m) => m.text.trim().toLowerCase() === clean.toLowerCase(),
+    );
+    if (dup) return dup;
+    const memory: Memory = {
+      id: uid(),
+      text: clean,
+      category: category?.trim() || undefined,
+      importance:
+        typeof importance === "number"
+          ? Math.max(1, Math.min(3, Math.round(importance)))
+          : 1,
+      createdAt: nowIso(),
+      updatedAt: nowIso(),
+    };
+    set((s) => ({
+      state: { ...s.state, memories: [memory, ...s.state.memories] },
+    }));
+    return memory;
+  },
+
+  updateMemory: (id, patch) =>
+    set((s) => ({
+      state: {
+        ...s.state,
+        memories: s.state.memories.map((m) =>
+          m.id === id ? { ...m, ...patch, updatedAt: nowIso() } : m,
+        ),
+      },
+    })),
+
+  deleteMemory: (id) =>
+    set((s) => ({
+      state: {
+        ...s.state,
+        memories: s.state.memories.filter((m) => m.id !== id),
+      },
     })),
 }));

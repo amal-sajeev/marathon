@@ -1,4 +1,5 @@
 import type { Settings } from "../state/types";
+import { useStore } from "../state/store";
 import { SYSTEM_PROMPT } from "./systemPrompt";
 import { runTool, TOOL_SPECS } from "./tools";
 
@@ -27,6 +28,40 @@ export interface ToolEvent {
 export interface AgentTurnResult {
   content: string;
   toolEvents: ToolEvent[];
+}
+
+/** A live system block describing who Leela is caring for and what she
+ *  remembers about them, so every reply can be personal. */
+function personalContext(): string {
+  const { state } = useStore.getState();
+  const c = state.character;
+  const lines: string[] = [];
+  lines.push("WHAT YOU KNOW RIGHT NOW (context for you, not spoken by the user)");
+  lines.push(
+    `- The person you look after goes by "${c.name}". They are level ${c.level}, HP ${Math.round(
+      c.hp,
+    )}/${c.maxHp}, gold ${Math.round(c.gold)}.`,
+  );
+
+  const memories = state.memories ?? [];
+  if (memories.length > 0) {
+    const sorted = [...memories].sort(
+      (a, b) => (b.importance ?? 1) - (a.importance ?? 1),
+    );
+    lines.push(
+      "- What you remember about them. Let it shape your tone and let details surface naturally when relevant. Never recite this back as a list:",
+    );
+    sorted
+      .slice(0, 40)
+      .forEach((m) =>
+        lines.push(`  - ${m.text}${m.category ? ` [${m.category}]` : ""}`),
+      );
+  } else {
+    lines.push(
+      "- You don't know much about them yet. As you learn lasting, meaningful things (their name, the people and things they love, their real goals, what weighs on them, wins worth holding onto), quietly save them with the remember tool so you can be a true companion over time.",
+    );
+  }
+  return lines.join("\n");
 }
 
 function buildUrl(settings: Settings): string {
@@ -97,6 +132,7 @@ export async function runAgentTurn(
 
   const messages: ChatMessage[] = [
     { role: "system", content: SYSTEM_PROMPT },
+    { role: "system", content: personalContext() },
     ...history,
   ];
 

@@ -205,6 +205,74 @@ export const TOOL_SPECS: ToolSpec[] = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "remember",
+      description:
+        "Save a lasting, meaningful detail about the person so you can be warm and specific in future conversations: their name, people they love, what they care about, long-term goals, what weighs on them, sensitivities, wins worth recalling. Phrase it as a short third-person note ('Their dog Rex is getting old'). Do NOT store trivia, one-off task status, or anything they'd want kept private unless they clearly want you to hold it. Check that it isn't already known first.",
+      parameters: {
+        type: "object",
+        properties: {
+          text: { type: "string", description: "The detail, as a short note." },
+          category: {
+            type: "string",
+            enum: ["person", "preference", "goal", "wellbeing", "milestone", "other"],
+          },
+          importance: {
+            type: "integer",
+            minimum: 1,
+            maximum: 3,
+            description: "1 = minor, 3 = central to who they are.",
+          },
+        },
+        required: ["text"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "update_memory",
+      description:
+        "Revise a memory you already hold (e.g. a goal changed, a detail was wrong). Use list_memories first to get its id.",
+      parameters: {
+        type: "object",
+        properties: {
+          id: { type: "string" },
+          text: { type: "string" },
+          category: {
+            type: "string",
+            enum: ["person", "preference", "goal", "wellbeing", "milestone", "other"],
+          },
+          importance: { type: "integer", minimum: 1, maximum: 3 },
+        },
+        required: ["id"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "forget_memory",
+      description:
+        "Let go of a memory by id when it's no longer true or the person asks you to forget it.",
+      parameters: {
+        type: "object",
+        properties: { id: { type: "string" } },
+        required: ["id"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "list_memories",
+      description:
+        "List everything you currently remember about the person, with ids, so you can reference or revise it.",
+      parameters: { type: "object", properties: {} },
+    },
+  },
 ];
 
 function summarizeTask(t: Task): Record<string, unknown> {
@@ -337,6 +405,43 @@ export function runTool(
         return { ok: false, error: "No habit with that id." };
       store.scoreHabit(id, dir);
       return { ok: true, scored: task.title, direction: dir };
+    }
+    case "remember": {
+      const text = String(args.text ?? "").trim();
+      if (!text) return { ok: false, error: "Nothing to remember." };
+      const category = args.category ? String(args.category) : undefined;
+      const importance =
+        typeof args.importance === "number" ? (args.importance as number) : undefined;
+      const memory = store.addMemory(text, category, importance);
+      if (!memory) return { ok: false, error: "Could not save that." };
+      return { ok: true, id: memory.id, remembered: memory.text };
+    }
+    case "update_memory": {
+      const id = String(args.id ?? "");
+      const exists = store.state.memories.some((m) => m.id === id);
+      if (!exists) return { ok: false, error: "No memory with that id." };
+      const patch: Record<string, unknown> = {};
+      if (args.text !== undefined) patch.text = String(args.text);
+      if (args.category !== undefined) patch.category = String(args.category);
+      if (args.importance !== undefined) patch.importance = args.importance;
+      store.updateMemory(id, patch);
+      return { ok: true };
+    }
+    case "forget_memory": {
+      const id = String(args.id ?? "");
+      const exists = store.state.memories.some((m) => m.id === id);
+      if (!exists) return { ok: false, error: "No memory with that id." };
+      store.deleteMemory(id);
+      return { ok: true };
+    }
+    case "list_memories": {
+      const memories = store.state.memories.map((m) => ({
+        id: m.id,
+        text: m.text,
+        category: m.category,
+        importance: m.importance,
+      }));
+      return { ok: true, memories };
     }
     default:
       return { ok: false, error: `Unknown tool ${name}` };

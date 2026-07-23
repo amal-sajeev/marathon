@@ -31,8 +31,12 @@ export function SettingsPanel() {
   const character = useStore((s) => s.state.character);
   const renameCharacter = useStore((s) => s.renameCharacter);
   const pushToast = useStore((s) => s.pushToast);
+  const memories = useStore((s) => s.state.memories);
+  const addMemory = useStore((s) => s.addMemory);
+  const deleteMemory = useStore((s) => s.deleteMemory);
 
   const [showKey, setShowKey] = useState(false);
+  const [newMemory, setNewMemory] = useState("");
 
   if (!open) return null;
 
@@ -245,6 +249,87 @@ export function SettingsPanel() {
               deploy the Cloudflare Worker in the <code>worker/</code> folder and
               paste its URL here. Leave blank to use best-effort local reminders
               only.
+            </div>
+          </div>
+
+          <div className="field">
+            <label className="field__label">What Leela remembers</label>
+            <div className="hint" style={{ marginTop: 0, marginBottom: 8 }}>
+              Lasting details Leela keeps about you so she can be personal. She
+              adds these as she learns them; you can add your own or remove any.
+              They live in your save file.
+            </div>
+
+            {memories.length === 0 ? (
+              <div className="hint" style={{ opacity: 0.8 }}>
+                Nothing yet. As you talk with Leela, the things that matter will
+                collect here.
+              </div>
+            ) : (
+              <div
+                style={{ display: "flex", flexDirection: "column", gap: 6 }}
+              >
+                {memories.map((m) => (
+                  <div
+                    className="row"
+                    key={m.id}
+                    style={{ alignItems: "flex-start", gap: 8 }}
+                  >
+                    <span style={{ flex: 1, fontSize: 13, lineHeight: 1.4 }}>
+                      {m.text}
+                      {m.category ? (
+                        <span
+                          style={{
+                            marginLeft: 6,
+                            fontSize: 10,
+                            letterSpacing: 1,
+                            textTransform: "uppercase",
+                            color: "var(--text-faint)",
+                          }}
+                        >
+                          {m.category}
+                        </span>
+                      ) : null}
+                    </span>
+                    <button
+                      className="btn btn--ghost btn--sm"
+                      style={{ flex: "0 0 auto" }}
+                      onClick={() => deleteMemory(m.id)}
+                      aria-label="Forget this"
+                    >
+                      {"\u2716"}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="row" style={{ marginTop: 10, alignItems: "center" }}>
+              <input
+                className="input"
+                value={newMemory}
+                placeholder="Add something for Leela to remember"
+                style={{ flex: 1 }}
+                onChange={(e) => setNewMemory(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && newMemory.trim()) {
+                    addMemory(newMemory, "other");
+                    setNewMemory("");
+                  }
+                }}
+              />
+              <button
+                className="btn btn--sm"
+                style={{ flex: "0 0 auto" }}
+                disabled={!newMemory.trim()}
+                onClick={() => {
+                  if (!newMemory.trim()) return;
+                  addMemory(newMemory, "other");
+                  setNewMemory("");
+                }}
+              >
+                Add
+              </button>
             </div>
           </div>
 

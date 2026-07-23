@@ -41,7 +41,7 @@ declare global {
 
 const ACCEPT_TYPES: PickerAcceptType[] = [
   {
-    description: "RPGtask save",
+    description: "Marathon save",
     accept: { "application/octet-stream": [".rpgsave"] },
   },
 ];

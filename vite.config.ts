@@ -12,10 +12,10 @@ export default defineConfig({
       registerType: "autoUpdate",
       includeAssets: ["favicon.svg", "icons/icon.svg", "icons/icon-maskable.svg"],
       manifest: {
-        name: "RPGtask",
-        short_name: "RPGtask",
+        name: "Marathon",
+        short_name: "Marathon",
         description:
-          "A cozy RPG task keeper with an AI companion who sets your quests.",
+          "A sci-fi RPG task keeper with an AI companion who sets your quests.",
         theme_color: "#000206",
         background_color: "#000206",
         display: "standalone",
