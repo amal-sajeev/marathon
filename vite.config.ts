@@ -39,7 +39,22 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ["**/*.{js,css,html,svg,png,woff2}"],
+        // Leela's face/background art can be large and numerous - keep it out
+        // of the install-time precache and cache each image on first use so the
+        // app installs small and stays fast.
+        globIgnores: ["**/assets/faces/**"],
         importScripts: ["notify-sw.js"],
+        runtimeCaching: [
+          {
+            urlPattern: ({ url }) => url.pathname.includes("/assets/faces/"),
+            handler: "CacheFirst",
+            options: {
+              cacheName: "leela-faces",
+              expiration: { maxEntries: 80, maxAgeSeconds: 60 * 60 * 24 * 30 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+        ],
       },
     }),
   ],

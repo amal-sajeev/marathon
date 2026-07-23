@@ -1,9 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "../state/store";
 import { AssetImage } from "../components/AssetImage";
 import { Markdown } from "../components/Markdown";
 import { runAgentTurn, toApiHistory, type ChatMessage } from "./mistral";
 import { nextId, useChat, type VisibleMessage } from "./chatStore";
+import { ChatBackground } from "./ChatBackground";
+import { extractEmotion, type Emotion } from "./emotions";
 
 const TOOL_VERB: Record<string, string> = {
   add_habit: "added a habit",
@@ -50,7 +52,17 @@ export function ChatPanel() {
     }
   }, [messages, open, busy]);
 
+  const latestEmotion = useMemo<Emotion>(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === "assistant") return messages[i].emotion ?? "neutral";
+    }
+    return "neutral";
+  }, [messages]);
+
   if (!open) return null;
+
+  // She "thinks" while composing a reply.
+  const bgEmotion: Emotion = busy ? "thinking" : latestEmotion;
 
   const send = async (raw: string) => {
     const content = raw.trim();
@@ -72,11 +84,13 @@ export function ChatPanel() {
     setBusy(true);
     try {
       const result = await runAgentTurn(settings, apiHistory);
+      const { emotion, text } = extractEmotion(result.content || "");
       add({
         id: nextId(),
         role: "assistant",
-        content: result.content || "(done)",
+        content: text || "(done)",
         toolEvents: result.toolEvents,
+        emotion,
       });
     } catch (err) {
       add({
@@ -95,9 +109,15 @@ export function ChatPanel() {
     <>
       <div className="scrim" onClick={() => setOpen(false)} />
       <div className="sheet chat">
+        <ChatBackground emotion={bgEmotion} />
         <div className="sheet__grip" />
         <div className="sheet__head">
-          <span className="sheet__title">Your Companion</span>
+          <span className="chat__headline">
+            <span className="chat__headicon">
+              <AssetImage slot="agentIcon" />
+            </span>
+            <span className="sheet__title">Leela</span>
+          </span>
           <button className="icon-btn" onClick={() => setOpen(false)} aria-label="Close">
             {"\u2715"}
           </button>
@@ -107,7 +127,7 @@ export function ChatPanel() {
           {messages.length === 0 && (
             <div className="chat__intro">
               <div className="chat__portrait">
-                <AssetImage slot="agentPortrait" />
+                <AssetImage slot="agentIcon" />
               </div>
               <div>
                 {needsKey ? (

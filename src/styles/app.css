@@ -77,7 +77,11 @@ body::before {
   background-size: 44px 44px;
   -webkit-mask-image: radial-gradient(120% 90% at 50% 8%, #000 0%, transparent 62%);
   mask-image: radial-gradient(120% 90% at 50% 8%, #000 0%, transparent 62%);
-  animation: grid-drift 12s linear infinite;
+  /* Drift by exactly one grid tile using a transform (GPU-composited) instead
+     of animating background-position (which repaints the whole layer). Looping
+     44px keeps the lines perfectly seamless. */
+  animation: grid-drift 14s linear infinite;
+  will-change: transform;
   opacity: 0.7;
 }
 
@@ -110,15 +114,16 @@ body::after {
     transparent
   );
   animation: scan 7.5s linear infinite;
+  will-change: transform;
 }
 
 @keyframes grid-drift {
-  from { background-position: 0 0, 0 0; }
-  to { background-position: 0 -44px, 44px 0; }
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(44px, -44px, 0); }
 }
 @keyframes scan {
-  from { transform: translateY(0); }
-  to { transform: translateY(160vh); }
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(0, 160vh, 0); }
 }
 
 button {
@@ -164,9 +169,10 @@ select {
 .hero,
 .board {
   position: relative;
-  background: linear-gradient(180deg, var(--glass), var(--glass-2));
-  backdrop-filter: blur(12px) saturate(1.25);
-  -webkit-backdrop-filter: blur(12px) saturate(1.25);
+  /* Opaque-ish glass instead of backdrop-filter blur: far cheaper on mobile
+     GPUs, which struggle to re-sample a blurred backdrop over the animated
+     grid every frame. */
+  background: linear-gradient(180deg, rgba(12, 26, 36, 0.86), rgba(6, 14, 20, 0.92));
   border: 1px solid var(--neon-wire);
   border-radius: var(--radius);
   box-shadow: var(--edge), var(--panel-glow);
@@ -328,8 +334,6 @@ select {
   inset: 0 auto 0 0;
   border-radius: 999px;
   transition: width 0.5s cubic-bezier(0.22, 1, 0.36, 1);
-  background-size: 200% 100%;
-  animation: shimmer 3s linear infinite;
 }
 .tube__fill::after {
   content: "";
@@ -349,11 +353,6 @@ select {
   background: linear-gradient(90deg, var(--xp), var(--xp-glow), var(--xp));
   box-shadow: 0 0 12px rgba(56, 230, 255, 0.7);
 }
-@keyframes shimmer {
-  from { background-position: 200% 0; }
-  to { background-position: 0 0; }
-}
-
 .gauge__label {
   font-size: 11px;
   color: var(--text-dim);
@@ -403,8 +402,7 @@ select {
   border: 1px solid var(--neon-wire);
   border-bottom: none;
   border-radius: 12px 12px 0 0;
-  background: linear-gradient(180deg, rgba(12, 28, 38, 0.6), rgba(4, 10, 16, 0.7));
-  backdrop-filter: blur(8px);
+  background: linear-gradient(180deg, rgba(12, 28, 38, 0.85), rgba(4, 10, 16, 0.92));
   color: var(--text-dim);
   font-weight: 700;
   font-size: 12px;
@@ -423,11 +421,6 @@ select {
   background: linear-gradient(180deg, var(--neon-soft), var(--neon-deep));
   transform: translateY(-2px);
   box-shadow: 0 0 18px rgba(56, 230, 255, 0.55);
-  animation: tab-pulse 2.6s ease-in-out infinite;
-}
-@keyframes tab-pulse {
-  0%, 100% { box-shadow: 0 0 14px rgba(56, 230, 255, 0.4); }
-  50% { box-shadow: 0 0 24px rgba(56, 230, 255, 0.7); }
 }
 .tab__count {
   font-size: 10px;
@@ -832,6 +825,7 @@ select {
     transparent 360deg
   );
   animation: spin 3.5s linear infinite;
+  will-change: transform;
   -webkit-mask: radial-gradient(circle, transparent 60%, #000 62%);
   mask: radial-gradient(circle, transparent 60%, #000 62%);
 }
@@ -851,8 +845,7 @@ select {
 .scrim {
   position: fixed;
   inset: 0;
-  background: rgba(0, 4, 8, 0.72);
-  backdrop-filter: blur(3px);
+  background: rgba(0, 4, 8, 0.82);
   z-index: 40;
   animation: fade-in 0.2s ease;
 }
@@ -870,8 +863,7 @@ select {
   display: flex;
   flex-direction: column;
   border-radius: 20px 20px 0 0;
-  background: linear-gradient(180deg, rgba(10, 24, 34, 0.92), rgba(3, 9, 14, 0.96));
-  backdrop-filter: blur(16px) saturate(1.2);
+  background: linear-gradient(180deg, rgba(10, 24, 34, 0.97), rgba(3, 9, 14, 0.99));
   border: 1px solid var(--neon-wire);
   border-bottom: none;
   box-shadow: 0 -12px 44px rgba(0, 0, 0, 0.75), 0 0 30px rgba(56, 230, 255, 0.12);
@@ -1005,7 +997,93 @@ select {
 
 /* ---------- chat ---------- */
 
-.chat { height: 76vh; }
+.chat { height: 76vh; position: relative; }
+
+/* keep all chat content above the emotion background layer */
+.chat > .sheet__grip,
+.chat > .sheet__head,
+.chat__body,
+.chat__quick,
+.chat__compose {
+  position: relative;
+  z-index: 1;
+}
+
+/* ambient emotion art behind the conversation */
+.chat__bg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  pointer-events: none;
+}
+.chat__bg-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center top;
+  opacity: 0.9;
+}
+.chat__bg-scrim {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(3, 9, 14, 0.4) 0%,
+    rgba(3, 9, 14, 0.72) 52%,
+    rgba(3, 9, 14, 0.93) 100%
+  );
+}
+.chat__bg-noise {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    rgba(56, 230, 255, 0.14) 0 1px,
+    transparent 1px 3px
+  );
+  mix-blend-mode: screen;
+}
+.chat__bg--glitch .chat__bg-img {
+  animation: bg-glitch 0.42s steps(1, end);
+  will-change: transform, clip-path, filter;
+}
+.chat__bg--glitch .chat__bg-noise {
+  animation: bg-noise 0.42s steps(1, end);
+}
+@keyframes bg-glitch {
+  0% { transform: translate3d(0, 0, 0); filter: none; clip-path: inset(0 0 0 0); }
+  12% { transform: translate3d(-7px, 0, 0); filter: hue-rotate(35deg) contrast(1.35) saturate(1.4); clip-path: inset(6% 0 62% 0); }
+  26% { transform: translate3d(8px, 0, 0); filter: hue-rotate(-25deg) contrast(1.2); clip-path: inset(58% 0 16% 0); }
+  40% { transform: translate3d(-5px, 0, 0); filter: none; clip-path: inset(28% 0 44% 0); }
+  55% { transform: translate3d(4px, 0, 0); filter: hue-rotate(15deg) saturate(1.5); clip-path: inset(72% 0 8% 0); }
+  70% { transform: translate3d(-2px, 0, 0); filter: none; clip-path: inset(14% 0 70% 0); }
+  100% { transform: translate3d(0, 0, 0); filter: none; clip-path: inset(0 0 0 0); }
+}
+@keyframes bg-noise {
+  0%, 100% { opacity: 0; }
+  20% { opacity: 0.55; }
+  45% { opacity: 0.2; }
+  65% { opacity: 0.5; }
+}
+
+.chat__headline { display: flex; align-items: center; gap: 10px; }
+.chat__headicon {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 1px solid var(--neon-wire);
+  box-shadow: 0 0 10px rgba(56, 230, 255, 0.35);
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+}
+.chat__headicon img { width: 100%; height: 100%; object-fit: cover; }
 .chat__body {
   flex: 1;
   overflow-y: auto;
@@ -1018,8 +1096,17 @@ select {
   display: flex;
   gap: 12px;
   align-items: center;
-  padding: 8px 14px 12px;
-  color: var(--text-dim);
+  align-self: flex-start;
+  max-width: 92%;
+  padding: 12px 14px;
+  color: var(--text);
+  /* frosted glass card so the greeting reads over Leela's art */
+  background: linear-gradient(180deg, rgba(8, 18, 26, 0.62), rgba(3, 9, 14, 0.74));
+  border: 1px solid rgba(56, 230, 255, 0.22);
+  border-radius: 14px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  -webkit-backdrop-filter: blur(8px) saturate(1.1);
+  backdrop-filter: blur(8px) saturate(1.1);
 }
 .chat__portrait {
   width: 54px;
@@ -1050,11 +1137,15 @@ select {
 }
 .msg--agent {
   align-self: flex-start;
-  background: rgba(10, 24, 34, 0.85);
+  background: linear-gradient(180deg, rgba(10, 24, 34, 0.82), rgba(5, 14, 20, 0.88));
   color: var(--text);
   border-bottom-left-radius: 5px;
   border: 1px solid rgba(56, 230, 255, 0.3);
-  box-shadow: inset 0 0 12px rgba(56, 230, 255, 0.06), 0 0 14px rgba(0, 0, 0, 0.4);
+  box-shadow:
+    inset 0 0 12px rgba(56, 230, 255, 0.06),
+    0 6px 18px rgba(0, 0, 0, 0.45);
+  -webkit-backdrop-filter: blur(7px) saturate(1.1);
+  backdrop-filter: blur(7px) saturate(1.1);
 }
 .msg--error {
   align-self: center;
@@ -1202,8 +1293,7 @@ select {
   font-weight: 700;
   color: #eafcff;
   border: 1px solid rgba(56, 230, 255, 0.4);
-  background: rgba(6, 16, 22, 0.9);
-  backdrop-filter: blur(8px);
+  background: rgba(6, 16, 22, 0.95);
   box-shadow: 0 0 16px rgba(0, 0, 0, 0.5);
   animation: toast-in 0.25s ease;
 }
@@ -1224,8 +1314,7 @@ select {
   z-index: 70;
   display: grid;
   place-items: center;
-  background: radial-gradient(circle at 50% 45%, rgba(56, 230, 255, 0.22), rgba(0, 4, 8, 0.82));
-  backdrop-filter: blur(3px);
+  background: radial-gradient(circle at 50% 45%, rgba(56, 230, 255, 0.22), rgba(0, 4, 8, 0.9));
   animation: fade-in 0.25s ease;
 }
 .celebrate__burst { text-align: center; color: var(--neon-soft); animation: pop 0.5s cubic-bezier(0.22, 1.4, 0.36, 1); }
@@ -1264,8 +1353,7 @@ select {
   z-index: 70;
   display: grid;
   place-items: center;
-  background: radial-gradient(circle at 50% 45%, rgba(255, 77, 120, 0.22), rgba(0, 4, 8, 0.86));
-  backdrop-filter: blur(3px);
+  background: radial-gradient(circle at 50% 45%, rgba(255, 77, 120, 0.22), rgba(0, 4, 8, 0.92));
   animation: fade-in 0.25s ease;
 }
 .fallen__burst { text-align: center; color: var(--hp-glow); animation: pop 0.5s cubic-bezier(0.22, 1.4, 0.36, 1); }

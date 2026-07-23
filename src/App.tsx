@@ -90,7 +90,7 @@ export function App() {
         onClick={() => setChatOpen(true)}
         aria-label="Talk to your companion"
       >
-        <AssetImage slot="agentAvatar" />
+        <AssetImage slot="agentIcon" />
       </button>
 
       <Toasts />

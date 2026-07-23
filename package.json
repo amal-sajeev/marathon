@@ -7,7 +7,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "faces": "node scripts/convert-faces.mjs"
   },
   "dependencies": {
     "dompurify": "^3.4.12",

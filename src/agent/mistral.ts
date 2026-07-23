@@ -1,5 +1,6 @@
 import type { Settings } from "../state/types";
 import { useStore } from "../state/store";
+import { bondStage } from "../game/bond";
 import { SYSTEM_PROMPT } from "./systemPrompt";
 import { runTool, TOOL_SPECS } from "./tools";
 
@@ -41,6 +42,11 @@ function personalContext(): string {
     `- The person you look after goes by "${c.name}". They are level ${c.level}, HP ${Math.round(
       c.hp,
     )}/${c.maxHp}, gold ${Math.round(c.gold)}.`,
+  );
+
+  const stage = bondStage(state.bond);
+  lines.push(
+    `- Where the two of you are: ${stage.name}. ${stage.guidance} This closeness deepens naturally as your days and talks together add up - never force it faster than it has grown, and take your lead from how the person responds.`,
   );
 
   const memories = state.memories ?? [];
@@ -129,6 +135,9 @@ export async function runAgentTurn(
   if (!settings.apiKey) {
     throw new Error("No Mistral API key yet. Open Settings and paste one in.");
   }
+
+  // Every shared turn brings them a little closer.
+  useStore.getState().recordInteraction();
 
   const messages: ChatMessage[] = [
     { role: "system", content: SYSTEM_PROMPT },

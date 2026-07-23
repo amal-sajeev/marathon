@@ -1,11 +1,14 @@
 import { create } from "zustand";
 import type { ToolEvent } from "./mistral";
+import type { Emotion } from "./emotions";
 
 export interface VisibleMessage {
   id: string;
   role: "user" | "assistant" | "error";
   content: string;
   toolEvents?: ToolEvent[];
+  /** Leela's expression for this message (assistant only) */
+  emotion?: Emotion;
 }
 
 interface ChatStore {

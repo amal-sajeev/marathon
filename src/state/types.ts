@@ -90,12 +90,23 @@ export interface Memory {
   updatedAt: string;
 }
 
+/** Tracks how close Leela and the user have grown, so her warmth can deepen
+ *  over time. Persisted in the save file. */
+export interface Bond {
+  /** ISO timestamp of the first time they met (usually the save's creation). */
+  firstMet: string;
+  /** number of conversational turns/check-ins they've shared */
+  interactions: number;
+}
+
 export interface GameState {
   character: Character;
   tasks: Task[];
   stats: Stats;
   /** lasting personal details Leela remembers about the user */
   memories: Memory[];
+  /** how close Leela and the user have grown */
+  bond: Bond;
   /** ISO date (yyyy-mm-dd) that cron last ran */
   lastCron?: string;
   createdAt: string;

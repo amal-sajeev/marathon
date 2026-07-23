@@ -3,6 +3,7 @@ import { isDailyActiveOn, todayStr } from "../state/cron";
 import type { Daily, Habit, Todo } from "../state/types";
 import { runAgentTurn, type ChatMessage } from "./mistral";
 import { nextId, useChat } from "./chatStore";
+import { extractEmotion } from "./emotions";
 
 const CHECKIN_DIRECTIVE = `[AUTOMATED CHECK-IN]
 This is a scheduled check-in you initiated, not a reply to the user. Open a short, natural conversation to help them stay on track. Stay fully in character.
@@ -107,11 +108,13 @@ export async function runCheckIn(): Promise<void> {
         chat.setBusy(true);
         await delay(700);
       }
+      const { emotion, text } = extractEmotion(messages[i]);
       useChat.getState().add({
         id: nextId(),
         role: "assistant",
-        content: messages[i],
+        content: text,
         toolEvents: i === 0 ? result.toolEvents : undefined,
+        emotion,
       });
     }
   } catch (err) {

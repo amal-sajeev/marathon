@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { applyDamage, applyGain, reviveIfDead, spendGold } from "./scoring";
 import { runCron, todayStr } from "./cron";
 import type {
+  Bond,
   Character,
   Daily,
   Difficulty,
@@ -47,12 +48,17 @@ export function freshStats(): Stats {
   };
 }
 
+export function freshBond(): Bond {
+  return { firstMet: nowIso(), interactions: 0 };
+}
+
 export function freshState(name?: string): GameState {
   return {
     character: freshCharacter(name),
     tasks: [],
     stats: freshStats(),
     memories: [],
+    bond: freshBond(),
     createdAt: nowIso(),
     lastCron: todayStr(),
   };
@@ -64,6 +70,10 @@ export function normalizeState(state: GameState): GameState {
     ...state,
     stats: { ...freshStats(), ...(state.stats ?? {}) },
     memories: Array.isArray(state.memories) ? state.memories : [],
+    bond: {
+      firstMet: state.bond?.firstMet ?? state.createdAt ?? nowIso(),
+      interactions: state.bond?.interactions ?? 0,
+    },
   };
 }
 
@@ -142,6 +152,9 @@ interface StoreState extends UIState {
   ) => Memory | null;
   updateMemory: (id: string, patch: Partial<Omit<Memory, "id" | "createdAt">>) => void;
   deleteMemory: (id: string) => void;
+
+  // bond
+  recordInteraction: () => void;
 }
 
 export interface NewTaskInput {
@@ -560,6 +573,17 @@ export const useStore = create<StoreState>((set, get) => ({
       state: {
         ...s.state,
         memories: s.state.memories.filter((m) => m.id !== id),
+      },
+    })),
+
+  recordInteraction: () =>
+    set((s) => ({
+      state: {
+        ...s.state,
+        bond: {
+          ...s.state.bond,
+          interactions: s.state.bond.interactions + 1,
+        },
       },
     })),
 }));

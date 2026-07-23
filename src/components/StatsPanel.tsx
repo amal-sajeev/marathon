@@ -1,6 +1,7 @@
 import { useStore } from "../state/store";
 import { xpForLevel } from "../state/scoring";
 import { rankForLevel, nextRank } from "../game/ranks";
+import { bondStage, nextBondStage } from "../game/bond";
 import { RankBadge } from "./RankBadge";
 
 function StatCard({
@@ -29,8 +30,16 @@ export function StatsPanel() {
   const character = useStore((s) => s.state.character);
   const stats = useStore((s) => s.state.stats);
   const tasks = useStore((s) => s.state.tasks);
+  const bond = useStore((s) => s.state.bond);
 
   if (!open) return null;
+
+  const stage = bondStage(bond);
+  const nextStage = nextBondStage(bond);
+  const daysTogether = Math.max(
+    0,
+    Math.floor((Date.now() - new Date(bond.firstMet).getTime()) / 86_400_000),
+  );
 
   const activeDailies = tasks.filter((t) => t.type === "daily").length;
   const activeTodos = tasks.filter((t) => t.type === "todo").length;
@@ -112,6 +121,19 @@ export function StatsPanel() {
             <span>{activeDailies} dailies</span>
             <span>{activeHabits} habits</span>
             <span>{activeTodos} to-dos</span>
+          </div>
+
+          <div className="rank-strip" style={{ marginTop: 14 }}>
+            <div className="rank-strip__meta">
+              <div className="rank-strip__label">Bond with Leela</div>
+              <div className="rank-strip__name">{stage.name}</div>
+              <div className="rank-strip__progress">
+                {daysTogether === 0
+                  ? "together since today"
+                  : `together ${daysTogether} ${daysTogether === 1 ? "day" : "days"}`}
+                {nextStage ? " \u00b7 growing closer" : " \u00b7 as close as can be"}
+              </div>
+            </div>
           </div>
 
           <div className="hint" style={{ marginTop: 12 }}>

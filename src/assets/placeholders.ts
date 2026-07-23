@@ -32,6 +32,13 @@ export const ASSET_SLOTS: Record<string, AssetSlot> = {
     src: `${base}assets/agent-avatar.png`,
     note: "Small round avatar for the floating button. ~256x256.",
   },
+  agentIcon: {
+    key: "agentIcon",
+    label: "LEELA",
+    glyph: "\u25C9",
+    src: `${base}assets/faces/icon.webp`,
+    note: "Leela's constant face icon (orb + chat). Square, ~512-1024.",
+  },
   hero: {
     key: "hero",
     label: "HERO",
