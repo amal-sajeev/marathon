@@ -207,6 +207,9 @@ const defaultSettings: Settings = {
   apiKey: "",
   model: "mistral-small-latest",
   proxyUrl: "",
+  checkInsEnabled: false,
+  checkInTimes: ["09:00", "20:00"],
+  pushUrl: "",
 };
 
 export const useStore = create<StoreState>((set, get) => ({

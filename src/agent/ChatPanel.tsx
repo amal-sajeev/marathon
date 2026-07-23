@@ -14,6 +14,9 @@ const TOOL_VERB: Record<string, string> = {
   delete_task: "removed a task",
   list_tasks: "checked your board",
   get_character: "read your stats",
+  complete_daily: "checked off a daily",
+  complete_todo: "checked off a to-do",
+  score_habit: "logged a habit",
 };
 
 const QUICK_PROMPTS = [

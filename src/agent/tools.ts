@@ -163,6 +163,48 @@ export const TOOL_SPECS: ToolSpec[] = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "complete_daily",
+      description:
+        "Mark a daily as done for today (grants XP/gold, extends its streak). Use when the user says they did it.",
+      parameters: {
+        type: "object",
+        properties: { id: { type: "string" } },
+        required: ["id"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "complete_todo",
+      description:
+        "Mark a to-do as done (grants XP/gold). Use when the user says they finished it.",
+      parameters: {
+        type: "object",
+        properties: { id: { type: "string" } },
+        required: ["id"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "score_habit",
+      description:
+        "Record a habit occurrence: 'up' for the good side (rewards), 'down' for the bad side (costs HP). Use when the user reports doing or slipping on a habit.",
+      parameters: {
+        type: "object",
+        properties: {
+          id: { type: "string" },
+          direction: { type: "string", enum: ["up", "down"] },
+        },
+        required: ["id", "direction"],
+      },
+    },
+  },
 ];
 
 function summarizeTask(t: Task): Record<string, unknown> {
@@ -268,6 +310,33 @@ export function runTool(
       if (!exists) return { ok: false, error: "No task with that id." };
       store.deleteTask(id);
       return { ok: true };
+    }
+    case "complete_daily": {
+      const id = String(args.id ?? "");
+      const task = store.state.tasks.find((t) => t.id === id);
+      if (!task || task.type !== "daily")
+        return { ok: false, error: "No daily with that id." };
+      if ((task as Daily).done) return { ok: true, already: true };
+      store.toggleDaily(id);
+      return { ok: true, completed: task.title };
+    }
+    case "complete_todo": {
+      const id = String(args.id ?? "");
+      const task = store.state.tasks.find((t) => t.id === id);
+      if (!task || task.type !== "todo")
+        return { ok: false, error: "No to-do with that id." };
+      if ((task as Todo).done) return { ok: true, already: true };
+      store.toggleTodo(id);
+      return { ok: true, completed: task.title };
+    }
+    case "score_habit": {
+      const id = String(args.id ?? "");
+      const dir = args.direction === "down" ? "down" : "up";
+      const task = store.state.tasks.find((t) => t.id === id);
+      if (!task || task.type !== "habit")
+        return { ok: false, error: "No habit with that id." };
+      store.scoreHabit(id, dir);
+      return { ok: true, scored: task.title, direction: dir };
     }
     default:
       return { ok: false, error: `Unknown tool ${name}` };

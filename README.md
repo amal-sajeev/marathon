@@ -64,6 +64,45 @@ Plain JSON is also accepted on load, so you can hand-edit if you like.
 2. Open the site in Chrome on your phone.
 3. Menu → **Add to Home screen / Install app**.
 
+## Check-in notifications
+
+In **Settings → Check-ins** you can enable proactive check-ins and set one or
+more daily times. At each time Leela opens a short, natural multi-message
+check-in (what to add, what you finished, how habits went, which to-dos you did
+or missed) and records your answers via tools.
+
+Delivery has two tiers:
+
+- **Best-effort (default, no backend):** works when the app is open, and any
+  missed check-in runs the moment you next open it. On installed Android PWAs it
+  also uses scheduled local notification triggers where supported.
+- **Reliable background push (optional Cloudflare Worker):** notifications
+  arrive even when the app is fully closed. Deploy the tiny Worker in
+  [`worker/`](worker/) and paste its URL into **Settings → Push server URL**.
+
+### Deploying the push Worker
+
+Requires a free Cloudflare account.
+
+```bash
+cd worker
+npm install
+npx wrangler login
+npx wrangler kv namespace create SUBS   # copy the id into wrangler.toml
+npm run gen-vapid                        # prints a VAPID key JSON
+npx wrangler secret put VAPID_JSON       # paste that JSON when prompted
+# edit ADMIN_CONTACT (and optionally ALLOWED_ORIGIN) in wrangler.toml
+npm run deploy                           # prints your worker URL
+```
+
+Then paste the printed `https://rpgtask-push.<you>.workers.dev` URL into
+**Settings → Push server URL** and make sure check-ins are enabled with
+notification permission granted. The Worker runs every minute, matches your
+times (converted to UTC), and sends a push; tapping it opens the app and starts
+Leela's check-in. Only the opaque push endpoint is stored server-side — your
+tasks never leave your device. Note: the AI conversation itself still runs in
+the app, so tapping the notification is what kicks it off.
+
 ## Deploying to GitHub Pages
 
 This repo includes `.github/workflows/deploy.yml`.
@@ -100,10 +139,12 @@ No code changes needed — rebuild and they'll appear. (Slots are defined in `sr
 src/
   state/     game types, Zustand store, scoring, daily cron
   save/      .rpgsave codec, File System Access, persistence wiring
-  agent/     Mistral client, tool schemas, system prompt, chat UI
+  agent/     Mistral client, tool schemas, system prompt, chat UI, check-ins
+  notify/    notification permission, scheduling, push subscription sync
   components/ character bar, tabs, board, cards, sheets, toasts
   assets/    image placeholder registry
   styles/    the skeuomorphic stylesheet
+worker/      optional Cloudflare Worker for reliable background push
 ```
 
 ## License

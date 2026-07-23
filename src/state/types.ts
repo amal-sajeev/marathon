@@ -89,6 +89,12 @@ export interface Settings {
   apiKey: string;
   model: string;
   proxyUrl: string;
+  /** whether Leela proactively checks in at set times */
+  checkInsEnabled: boolean;
+  /** daily check-in times as "HH:MM" (24h), local time */
+  checkInTimes: string[];
+  /** optional Cloudflare Worker URL for reliable background push */
+  pushUrl: string;
 }
 
 /** The full persisted payload that lives inside the .rpgsave file. */

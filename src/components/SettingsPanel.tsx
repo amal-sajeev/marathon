@@ -7,6 +7,12 @@ import {
   importSaveUpload,
   loadSaveFile,
 } from "../save/persistence";
+import {
+  permissionStatus,
+  requestPermission,
+  supportsNotifications,
+} from "../notify/notifications";
+import { runCheckIn } from "../agent/checkin";
 
 const MODELS = [
   { id: "mistral-small-latest", label: "Mistral Small (fast, cheap)" },
@@ -114,6 +120,131 @@ export function SettingsPanel() {
               Only needed if direct calls to Mistral are blocked by the browser
               (CORS). A prefix ending in "=" gets the request URL appended; you can
               also use a {"{url}"} placeholder.
+            </div>
+          </div>
+
+          <div className="field">
+            <label className="field__label">Check-ins</label>
+            <div className="hint" style={{ marginTop: 0, marginBottom: 8 }}>
+              Leela pings you at the times below and runs a quick check-in:
+              what to add, what you finished, how habits went, which to-dos you
+              did or missed. Works best as an installed app on Android; if a
+              notification is missed, the check-in runs next time you open the app.
+            </div>
+
+            {!supportsNotifications() && (
+              <div className="hint" style={{ color: "var(--danger)" }}>
+                This browser can't show notifications. Check-ins will still run
+                when you open the app around a set time.
+              </div>
+            )}
+
+            <label
+              style={{ display: "flex", alignItems: "center", gap: 10 }}
+            >
+              <input
+                type="checkbox"
+                style={{ flex: "0 0 auto", width: 18, height: 18 }}
+                checked={settings.checkInsEnabled}
+                onChange={async (e) => {
+                  const on = e.target.checked;
+                  if (on && supportsNotifications()) {
+                    const granted = await requestPermission();
+                    if (!granted) {
+                      pushToast("Notifications were not allowed", "info");
+                    }
+                  }
+                  setSettings({ checkInsEnabled: on });
+                }}
+              />
+              <span>Enable proactive check-ins</span>
+            </label>
+
+            {permissionStatus() === "denied" && settings.checkInsEnabled && (
+              <div className="hint" style={{ color: "var(--danger)" }}>
+                Notifications are blocked in your browser settings. In-app
+                check-ins still work when the app is open.
+              </div>
+            )}
+
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 8,
+                marginTop: 10,
+              }}
+            >
+              {settings.checkInTimes.map((time, i) => (
+                <div className="row" key={i} style={{ alignItems: "center" }}>
+                  <input
+                    className="input"
+                    type="time"
+                    value={time}
+                    onChange={(e) => {
+                      const next = [...settings.checkInTimes];
+                      next[i] = e.target.value;
+                      setSettings({ checkInTimes: next });
+                    }}
+                    style={{ flex: 1 }}
+                  />
+                  <button
+                    className="btn btn--ghost btn--sm"
+                    style={{ flex: "0 0 auto" }}
+                    onClick={() =>
+                      setSettings({
+                        checkInTimes: settings.checkInTimes.filter(
+                          (_, j) => j !== i,
+                        ),
+                      })
+                    }
+                    aria-label="Remove time"
+                  >
+                    {"\u2715"}
+                  </button>
+                </div>
+              ))}
+              <div className="row">
+                <button
+                  className="btn btn--sm"
+                  onClick={() =>
+                    setSettings({
+                      checkInTimes: [...settings.checkInTimes, "18:00"],
+                    })
+                  }
+                >
+                  + Add time
+                </button>
+                <button
+                  className="btn btn--ghost btn--sm"
+                  onClick={() => {
+                    setOpen(false);
+                    void runCheckIn();
+                  }}
+                >
+                  Check in now
+                </button>
+              </div>
+            </div>
+
+            <label
+              className="field__label"
+              style={{ marginTop: 12, display: "block" }}
+            >
+              Push server URL (optional)
+            </label>
+            <input
+              className="input"
+              value={settings.pushUrl}
+              placeholder="https://rpgtask-push.you.workers.dev"
+              autoComplete="off"
+              onChange={(e) => setSettings({ pushUrl: e.target.value.trim() })}
+            />
+            <div className="hint">
+              For notifications that arrive even when the app is fully closed,
+              deploy the Cloudflare Worker in the <code>worker/</code> folder and
+              paste its URL here. Leave blank to use best-effort local reminders
+              only.
             </div>
           </div>
 

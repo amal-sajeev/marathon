@@ -1,6 +1,7 @@
 import { get as idbGet, set as idbSet } from "idb-keyval";
 import { useStore, normalizeState } from "../state/store";
 import { runCron } from "../state/cron";
+import { initNotifications } from "../notify/notifications";
 import type { GameState, Settings } from "../state/types";
 import { decodeSave, encodeSave } from "./rpgsave";
 import {
@@ -19,6 +20,8 @@ import {
 const STATE_BACKUP_KEY = "rpgtask:state-backup";
 const SETTINGS_KEY = "rpgtask:settings";
 
+const DEFAULT_CHECK_IN_TIMES = ["09:00", "20:00"];
+
 function loadSettings(): Settings {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
@@ -28,12 +31,24 @@ function loadSettings(): Settings {
         apiKey: parsed.apiKey ?? "",
         model: parsed.model ?? "mistral-small-latest",
         proxyUrl: parsed.proxyUrl ?? "",
+        checkInsEnabled: parsed.checkInsEnabled ?? false,
+        checkInTimes: Array.isArray(parsed.checkInTimes)
+          ? parsed.checkInTimes
+          : DEFAULT_CHECK_IN_TIMES,
+        pushUrl: parsed.pushUrl ?? "",
       };
     }
   } catch {
     /* ignore */
   }
-  return { apiKey: "", model: "mistral-small-latest", proxyUrl: "" };
+  return {
+    apiKey: "",
+    model: "mistral-small-latest",
+    proxyUrl: "",
+    checkInsEnabled: false,
+    checkInTimes: DEFAULT_CHECK_IN_TIMES,
+    pushUrl: "",
+  };
 }
 
 function persistSettings(settings: Settings): void {
@@ -131,6 +146,9 @@ export async function initPersistence(): Promise<void> {
       useStore.getState().runCronNow();
     }
   });
+
+  // Wire proactive check-in notifications (best-effort, no backend).
+  initNotifications();
 }
 
 // --- Actions surfaced to the Settings UI ---

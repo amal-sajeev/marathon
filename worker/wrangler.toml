@@ -1,0 +1,27 @@
+# Cloudflare Worker for RPGtask push check-ins.
+# Setup:
+#   1) npm install            (inside this worker/ folder)
+#   2) npx wrangler kv namespace create SUBS
+#      -> copy the printed id into the [[kv_namespaces]] block below
+#   3) npm run gen-vapid      (prints a VAPID key JSON)
+#      npx wrangler secret put VAPID_JSON   (paste the JSON when prompted)
+#   4) edit ADMIN_CONTACT below to your mailto: address
+#   5) npm run deploy         (prints your https://rpgtask-push.<you>.workers.dev URL)
+#   6) paste that URL into RPGtask Settings -> "Push server URL"
+name = "rpgtask-push"
+main = "src/index.ts"
+compatibility_date = "2024-11-01"
+
+[[kv_namespaces]]
+binding = "SUBS"
+id = "7cfe894f46c44d1292704f490024d8ec"
+
+# Run every minute so check-ins fire on the exact minute you set.
+[triggers]
+crons = ["* * * * *"]
+
+[vars]
+# Restrict to your Pages origin in production, e.g.
+# "https://youruser.github.io". "*" is fine while testing.
+ALLOWED_ORIGIN = "*"
+ADMIN_CONTACT = "mailto:amsajeev333@gmail.com"
