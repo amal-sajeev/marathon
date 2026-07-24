@@ -17,6 +17,8 @@ export interface BaseTask {
   createdAt: string;
   updatedAt: string;
   tags?: string[];
+  /** optional reminder. Dailies use "HH:MM"; to-dos use an ISO datetime. */
+  remindAt?: string;
 }
 
 export interface Habit extends BaseTask {
@@ -55,6 +57,22 @@ export interface Reward extends BaseTask {
 
 export type Task = Habit | Daily | Todo | Reward;
 
+/** Consumables the adventurer can stockpile and use. */
+export interface Inventory {
+  /** restores a chunk of HP on use */
+  hpPotion: number;
+  /** boosts XP gains for the rest of the day when used */
+  xpCharm: number;
+  /** auto-spent to protect the day-streak when a day is missed */
+  streakShield: number;
+}
+
+/** Time-boxed effects currently in play. */
+export interface Buffs {
+  /** ISO datetime until which XP gains are multiplied */
+  xpMultUntil?: string;
+}
+
 export interface Character {
   name: string;
   level: number;
@@ -62,6 +80,8 @@ export interface Character {
   maxHp: number;
   xp: number;
   gold: number;
+  inventory: Inventory;
+  buffs: Buffs;
 }
 
 export interface Stats {
@@ -74,6 +94,8 @@ export interface Stats {
   longestStreak: number;
   /** times HP hit zero */
   timesFallen: number;
+  /** good habit occurrences ever logged */
+  habitsScored: number;
 }
 
 /** A lasting, personal fact Leela keeps about the user so she can be warm and
@@ -97,6 +119,62 @@ export interface Bond {
   firstMet: string;
   /** number of conversational turns/check-ins they've shared */
   interactions: number;
+  /** highest bond stage index already celebrated, so milestones fire once */
+  lastStageIndex?: number;
+}
+
+/** Cosmetic customization bought with gold. Empty string means the default. */
+export interface Cosmetics {
+  /** accent color id (see game/cosmetics) */
+  accent: string;
+  /** companion orb / FAB skin id */
+  orbSkin: string;
+  /** rank badge frame id */
+  badgeFrame: string;
+  /** ids of everything unlocked so far */
+  owned: string[];
+}
+
+/** A quick mood check-in the user logs and Leela can respond to. */
+export interface MoodEntry {
+  id: string;
+  /** yyyy-mm-dd */
+  date: string;
+  /** 1 (rough) .. 5 (great) */
+  mood: number;
+  note?: string;
+  createdAt: string;
+}
+
+/** One day's activity, for the trends heatmap. */
+export interface DayRecord {
+  /** yyyy-mm-dd */
+  date: string;
+  /** dailies + to-dos completed that day */
+  completed: number;
+  /** XP earned that day */
+  xp: number;
+}
+
+/** Something Leela decided to raise later ("ask about the interview tomorrow"). */
+export interface Followup {
+  id: string;
+  /** the reminder to herself, phrased as a note. */
+  text: string;
+  /** yyyy-mm-dd it becomes relevant; omitted means the next chance. */
+  dueDate?: string;
+  createdAt: string;
+  done?: boolean;
+}
+
+/** Light engagement bookkeeping: the daily gift and login streak. */
+export interface Engagement {
+  /** yyyy-mm-dd the daily gift was last granted. */
+  lastGiftDate?: string;
+  /** yyyy-mm-dd of the last app open counted for the streak. */
+  lastLoginDate?: string;
+  /** consecutive days opened. */
+  loginStreak: number;
 }
 
 export interface GameState {
@@ -107,9 +185,21 @@ export interface GameState {
   memories: Memory[];
   /** how close Leela and the user have grown */
   bond: Bond;
+  /** quick mood check-ins over time */
+  moods: MoodEntry[];
+  /** rolling per-day activity for trends */
+  history: DayRecord[];
+  /** cosmetic customization */
+  cosmetics: Cosmetics;
+  /** things Leela means to raise later */
+  followups: Followup[];
+  /** daily gift + login streak bookkeeping */
+  engagement: Engagement;
   /** ISO date (yyyy-mm-dd) that cron last ran */
   lastCron?: string;
   createdAt: string;
+  /** ISO timestamp of the last state change, for sync conflict resolution */
+  updatedAt: string;
 }
 
 export interface Settings {
@@ -122,6 +212,16 @@ export interface Settings {
   checkInTimes: string[];
   /** optional Cloudflare Worker URL for reliable background push */
   pushUrl: string;
+  /** run a reflective weekly review with Leela on Sundays */
+  weeklyReview: boolean;
+  /** Leela sends unscheduled, spontaneous check-ins during the day */
+  spontaneousEnabled?: boolean;
+  /** how many spontaneous pings per day (1..6) */
+  spontaneousCount?: number;
+  /** local "HH:MM" window start she'll ping within */
+  spontaneousStart?: string;
+  /** local "HH:MM" window end she'll ping within */
+  spontaneousEnd?: string;
 }
 
 /** The full persisted payload that lives inside the .rpgsave file. */

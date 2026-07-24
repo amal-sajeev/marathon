@@ -46,8 +46,19 @@ function personalContext(): string {
 
   const stage = bondStage(state.bond);
   lines.push(
-    `- Where the two of you are: ${stage.name}. ${stage.guidance} This closeness deepens naturally as your days and talks together add up - never force it faster than it has grown, and take your lead from how the person responds.`,
+    `- How familiar you are with them: ${stage.name}. ${stage.guidance} This eases up naturally as your days and talks together add up. Never rush it, and take your cue from how they respond.`,
   );
+
+  const lastMood = state.moods?.[state.moods.length - 1];
+  if (lastMood) {
+    const ageMs = Date.now() - new Date(lastMood.createdAt).getTime();
+    if (ageMs < 2 * 86_400_000) {
+      const words = ["", "rough", "low", "okay", "good", "great"][lastMood.mood] ?? "okay";
+      lines.push(
+        `- They recently checked in feeling ${words}${lastMood.note ? ` and said "${lastMood.note}"` : ""}. Let it color your warmth without making a thing of it.`,
+      );
+    }
+  }
 
   const memories = state.memories ?? [];
   if (memories.length > 0) {

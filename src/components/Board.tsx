@@ -1,3 +1,4 @@
+import { useMemo, useState } from "react";
 import { useStore, type Tab } from "../state/store";
 import type { TaskType } from "../state/types";
 import { TaskCard } from "./TaskCard";
@@ -44,8 +45,29 @@ export function Board() {
   const tasks = useStore((s) => s.state.tasks);
   const setAddOpen = useStore((s) => s.setAddOpen);
 
+  const [query, setQuery] = useState("");
+  const [tag, setTag] = useState<string | null>(null);
+
   const type = TAB_TO_TYPE[activeTab];
-  const list = tasks.filter((t) => t.type === type);
+  const typed = useMemo(() => tasks.filter((t) => t.type === type), [tasks, type]);
+
+  const allTags = useMemo(() => {
+    const set = new Set<string>();
+    typed.forEach((t) => t.tags?.forEach((x) => set.add(x)));
+    return [...set].sort();
+  }, [typed]);
+
+  const q = query.trim().toLowerCase();
+  const filtered = typed.filter((t) => {
+    if (tag && !(t.tags ?? []).includes(tag)) return false;
+    if (!q) return true;
+    return (
+      t.title.toLowerCase().includes(q) ||
+      (t.notes ?? "").toLowerCase().includes(q) ||
+      (t.tags ?? []).some((x) => x.toLowerCase().includes(q))
+    );
+  });
+
   const empty = EMPTY[activeTab];
 
   return (
@@ -60,14 +82,49 @@ export function Board() {
         </button>
       </div>
 
-      {list.length === 0 ? (
+      {typed.length > 0 && (
+        <div className="board__filter">
+          <input
+            className="input input--search"
+            value={query}
+            placeholder="Search..."
+            onChange={(e) => setQuery(e.target.value)}
+          />
+          {allTags.length > 0 && (
+            <div className="tag-chips">
+              {allTags.map((x) => (
+                <button
+                  key={x}
+                  className={`tag-chip ${tag === x ? "tag-chip--on" : ""}`}
+                  onClick={() => setTag(tag === x ? null : x)}
+                >
+                  #{x}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {filtered.length === 0 ? (
         <div className="empty">
           <div className="empty__glyph">{empty.glyph}</div>
-          <div className="empty__title">{empty.title}</div>
-          <div className="empty__hint">{empty.hint}</div>
+          <div className="empty__title">
+            {typed.length === 0 ? empty.title : "Nothing matches"}
+          </div>
+          <div className="empty__hint">
+            {typed.length === 0 ? empty.hint : "Try a different search or tag."}
+          </div>
         </div>
       ) : (
-        list.map((t) => <TaskCard key={t.id} task={t} />)
+        filtered.map((t, i) => (
+          <TaskCard
+            key={t.id}
+            task={t}
+            first={i === 0}
+            last={i === filtered.length - 1}
+          />
+        ))
       )}
     </div>
   );

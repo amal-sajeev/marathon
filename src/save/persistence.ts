@@ -20,8 +20,40 @@ import {
 
 const STATE_BACKUP_KEY = "rpgtask:state-backup";
 const SETTINGS_KEY = "rpgtask:settings";
+const LAST_SYNCED_KEY = "rpgtask:last-synced";
+const BACKUPS_KEY = "rpgtask:backups";
+/** Don't snapshot a rolling backup more often than this. */
+const BACKUP_MIN_INTERVAL = 10 * 60 * 1000;
+const MAX_BACKUPS = 10;
 
 const DEFAULT_CHECK_IN_TIMES = ["09:00", "20:00"];
+
+export interface BackupEntry {
+  savedAt: string;
+  data: string;
+}
+
+/** Is timestamp a strictly newer than b? */
+function newer(a?: string, b?: string): boolean {
+  if (!a) return false;
+  if (!b) return true;
+  return new Date(a).getTime() > new Date(b).getTime();
+}
+
+export async function listBackups(): Promise<BackupEntry[]> {
+  const arr = (await idbGet(BACKUPS_KEY)) as BackupEntry[] | undefined;
+  return Array.isArray(arr) ? arr : [];
+}
+
+async function pushBackup(encoded: string): Promise<void> {
+  const arr = await listBackups();
+  const last = arr[arr.length - 1];
+  if (last && Date.now() - new Date(last.savedAt).getTime() < BACKUP_MIN_INTERVAL) {
+    return;
+  }
+  arr.push({ savedAt: new Date().toISOString(), data: encoded });
+  await idbSet(BACKUPS_KEY, arr.slice(-MAX_BACKUPS));
+}
 
 function loadSettings(): Settings {
   try {
@@ -37,6 +69,11 @@ function loadSettings(): Settings {
           ? parsed.checkInTimes
           : DEFAULT_CHECK_IN_TIMES,
         pushUrl: parsed.pushUrl ?? "",
+        weeklyReview: parsed.weeklyReview ?? false,
+        spontaneousEnabled: parsed.spontaneousEnabled ?? false,
+        spontaneousCount: parsed.spontaneousCount ?? 2,
+        spontaneousStart: parsed.spontaneousStart ?? "10:00",
+        spontaneousEnd: parsed.spontaneousEnd ?? "21:00",
       };
     }
   } catch {
@@ -49,6 +86,11 @@ function loadSettings(): Settings {
     checkInsEnabled: false,
     checkInTimes: DEFAULT_CHECK_IN_TIMES,
     pushUrl: "",
+    weeklyReview: false,
+    spontaneousEnabled: false,
+    spontaneousCount: 2,
+    spontaneousStart: "10:00",
+    spontaneousEnd: "21:00",
   };
 }
 
@@ -61,11 +103,17 @@ let lastSerialized = "";
 
 async function writeToDisk(state: GameState): Promise<void> {
   const store = useStore.getState();
-  // Always keep the in-browser backup safe first.
-  await idbSet(STATE_BACKUP_KEY, state);
+  // Stamp a save time so cross-device conflicts can be resolved newest-wins.
+  const stamped: GameState = { ...state, updatedAt: new Date().toISOString() };
+  const encoded = encodeSave(stamped);
+
+  // Always keep the in-browser backup safe first, plus a rolling snapshot.
+  await idbSet(STATE_BACKUP_KEY, stamped);
+  void pushBackup(encoded);
 
   const handle = await getStoredHandle();
   if (!handle) {
+    await idbSet(LAST_SYNCED_KEY, stamped.updatedAt);
     store.setSaveStatus("saved");
     return;
   }
@@ -78,10 +126,56 @@ async function writeToDisk(state: GameState): Promise<void> {
   }
   try {
     store.setSaveStatus("saving");
-    await writeHandle(handle, encodeSave(state));
+    await writeHandle(handle, encoded);
+    await idbSet(LAST_SYNCED_KEY, stamped.updatedAt);
     store.setSaveStatus("saved");
   } catch {
     store.setSaveStatus("error");
+  }
+}
+
+/**
+ * Decide which saved copy to trust when a linked file and a local backup both
+ * exist. Newest wins; if both changed since the last sync, we keep the newer
+ * and tell the user we resolved a conflict.
+ */
+function chooseState(
+  fileState: GameState,
+  backup: GameState | undefined,
+  lastSynced: string | undefined,
+): { state: GameState; source: "file" | "backup" } {
+  if (!backup) return { state: fileState, source: "file" };
+  const bU = backup.updatedAt;
+  const fU = fileState.updatedAt;
+  const backupChanged = !!bU && bU !== lastSynced;
+  const fileChanged = !!fU && fU !== lastSynced;
+  if (backupChanged && fileChanged && bU !== fU) {
+    useStore.getState().pushToast(
+      "Resolved a save conflict; kept the newer version.",
+      "info",
+    );
+    return newer(bU, fU)
+      ? { state: backup, source: "backup" }
+      : { state: fileState, source: "file" };
+  }
+  if (newer(bU, fU)) return { state: backup, source: "backup" };
+  return { state: fileState, source: "file" };
+}
+
+/** Restore a rolling local backup by its savedAt timestamp. */
+export async function restoreBackup(savedAt: string): Promise<void> {
+  const store = useStore.getState();
+  const arr = await listBackups();
+  const entry = arr.find((e) => e.savedAt === savedAt);
+  if (!entry) return;
+  try {
+    const decoded = decodeSave(entry.data);
+    const { state } = runCron(normalizeState(decoded.state));
+    store.replaceState(state);
+    lastSerialized = JSON.stringify(state);
+    store.pushToast("Backup restored", "info");
+  } catch {
+    store.pushToast("That backup could not be read", "loss");
   }
 }
 
@@ -102,6 +196,7 @@ export async function initPersistence(): Promise<void> {
   store.setFileSupported(supportsFileSystemAccess());
 
   let loadedState: GameState | null = null;
+  let adoptedBackupOverFile = false;
 
   // 1) Prefer a previously chosen save file - but only read it if access is
   //    already granted. We never prompt on boot (no user gesture): for an
@@ -113,7 +208,12 @@ export async function initPersistence(): Promise<void> {
     try {
       if (await hasPermission(handle, "readwrite")) {
         const raw = await readHandle(handle);
-        loadedState = decodeSave(raw).state;
+        const fileState = decodeSave(raw).state;
+        const backup = (await idbGet(STATE_BACKUP_KEY)) as GameState | undefined;
+        const lastSynced = (await idbGet(LAST_SYNCED_KEY)) as string | undefined;
+        const chosen = chooseState(fileState, backup, lastSynced);
+        loadedState = chosen.state;
+        adoptedBackupOverFile = chosen.source === "backup";
         store.setSaveStatus("saved");
       } else {
         store.setSaveStatus("needs-permission");
@@ -137,6 +237,14 @@ export async function initPersistence(): Promise<void> {
   } else {
     store.hydrate(useStore.getState().state, settings);
   }
+
+  // If local edits were newer than the file, push them back so the file catches up.
+  if (adoptedBackupOverFile) {
+    void writeToDisk(useStore.getState().state);
+  }
+
+  // Count today's open toward the login streak (the daily gift scales with it).
+  useStore.getState().registerLogin();
 
   lastSerialized = JSON.stringify(useStore.getState().state);
 

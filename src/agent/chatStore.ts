@@ -9,6 +9,8 @@ export interface VisibleMessage {
   toolEvents?: ToolEvent[];
   /** Leela's expression for this message (assistant only) */
   emotion?: Emotion;
+  /** suggested quick replies to show under this message (assistant only) */
+  chips?: string[];
 }
 
 interface ChatStore {

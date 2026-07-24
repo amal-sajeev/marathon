@@ -36,6 +36,11 @@ export default defineConfig({
             purpose: "maskable",
           },
         ],
+        shortcuts: [
+          { name: "Quick add", short_name: "Add", url: "./#add" },
+          { name: "Talk to Leela", short_name: "Leela", url: "./#chat" },
+          { name: "Check in now", short_name: "Check in", url: "./#checkin" },
+        ],
       },
       workbox: {
         globPatterns: ["**/*.{js,css,html,svg,png,woff2}"],

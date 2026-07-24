@@ -34,12 +34,19 @@ export interface ScoreResult {
  * Apply a positive completion: grant XP + gold scaled by difficulty.
  * Handles multi-level-ups and clamps values.
  */
+/** Whether the XP charm buff is currently active. */
+export function xpBuffActive(character: Character, now: Date = new Date()): boolean {
+  const until = character.buffs?.xpMultUntil;
+  return !!until && new Date(until).getTime() > now.getTime();
+}
+
 export function applyGain(
   character: Character,
   difficulty: Difficulty,
 ): ScoreResult {
   const mult = DIFFICULTY_MULT[difficulty];
-  const xpGained = Math.round((8 + Math.random() * 4) * mult);
+  const xpBuff = xpBuffActive(character) ? 1.5 : 1;
+  const xpGained = Math.round((8 + Math.random() * 4) * mult * xpBuff);
   const goldGained = Math.round((3 + Math.random() * 4) * mult * 10) / 10;
 
   const next: Character = { ...character };

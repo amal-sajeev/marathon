@@ -19,18 +19,38 @@ export function isEmotion(x: string): x is Emotion {
 }
 
 const TAG_RE = /^\s*\[\[\s*([a-zA-Z]+)\s*\]\]\s*/;
+const CHIPS_RE = /\[\[\s*chips:\s*([^\]]+)\]\]/i;
 
 /**
- * Pull a leading `[[emotion]]` tag off a message. Returns the resolved emotion
- * (falling back to "neutral" for a missing/unknown tag) and the message text
- * with the tag removed.
+ * Pull a leading `[[emotion]]` tag and an optional `[[chips: a | b | c]]` tag
+ * off a message. Returns the resolved emotion (falling back to "neutral"), any
+ * suggested quick replies, and the message text with both tags removed.
  */
-export function extractEmotion(content: string): { emotion: Emotion; text: string } {
-  const match = content.match(TAG_RE);
-  if (!match) return { emotion: "neutral", text: content };
+export function extractEmotion(content: string): {
+  emotion: Emotion;
+  text: string;
+  chips?: string[];
+} {
+  let text = content;
+
+  // Suggested quick replies, from anywhere in the message.
+  let chips: string[] | undefined;
+  const chipMatch = text.match(CHIPS_RE);
+  if (chipMatch) {
+    chips = chipMatch[1]
+      .split("|")
+      .map((c) => c.trim())
+      .filter(Boolean)
+      .slice(0, 4);
+    text = text.replace(CHIPS_RE, "").trim();
+    if (chips.length === 0) chips = undefined;
+  }
+
+  const match = text.match(TAG_RE);
+  if (!match) return { emotion: "neutral", text, chips };
   const key = match[1].toLowerCase();
   const emotion = isEmotion(key) ? key : "neutral";
-  return { emotion, text: content.slice(match[0].length) };
+  return { emotion, text: text.slice(match[0].length), chips };
 }
 
 const base = import.meta.env.BASE_URL;

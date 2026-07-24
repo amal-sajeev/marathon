@@ -1,8 +1,71 @@
 import { useStore } from "../state/store";
 import { xpForLevel } from "../state/scoring";
+import { todayStr } from "../state/cron";
 import { rankForLevel, nextRank } from "../game/ranks";
-import { bondStage, nextBondStage } from "../game/bond";
+import { BOND_STAGES, bondStage, nextBondStage } from "../game/bond";
+import { computeAchievements } from "../game/achievements";
+import { runWeeklyReview } from "../agent/checkin";
+import type { DayRecord, Habit } from "../state/types";
 import { RankBadge } from "./RankBadge";
+
+const HEATMAP_DAYS = 119; // 17 weeks
+
+function heatLevel(count: number): number {
+  if (count <= 0) return 0;
+  if (count <= 2) return 1;
+  if (count <= 4) return 2;
+  if (count <= 6) return 3;
+  return 4;
+}
+
+function Heatmap({ history }: { history: DayRecord[] }) {
+  const byDate = new Map(history.map((d) => [d.date, d]));
+  const today = new Date();
+  const cells: { key: string; level: number; count: number }[] = [];
+  for (let i = HEATMAP_DAYS - 1; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    const key = todayStr(d);
+    const count = byDate.get(key)?.completed ?? 0;
+    cells.push({ key, level: heatLevel(count), count });
+  }
+  return (
+    <div className="heatmap" aria-hidden="true">
+      {cells.map((c) => (
+        <span
+          key={c.key}
+          className={`heatcell heatcell--${c.level}`}
+          title={`${c.key}: ${c.count} done`}
+        />
+      ))}
+    </div>
+  );
+}
+
+function HabitBars({ habits }: { habits: Habit[] }) {
+  if (habits.length === 0) return null;
+  const max = Math.max(1, ...habits.map((h) => Math.max(h.countUp, h.countDown)));
+  return (
+    <div className="habit-bars">
+      {habits.map((h) => (
+        <div className="habit-bar" key={h.id}>
+          <div className="habit-bar__title">{h.title}</div>
+          <div className="habit-bar__track">
+            <span
+              className="habit-bar__up"
+              style={{ width: `${(h.countUp / max) * 100}%` }}
+            />
+            <span
+              className="habit-bar__down"
+              style={{ width: `${(h.countDown / max) * 100}%` }}
+            />
+          </div>
+          <div className="habit-bar__meta">+{h.countUp} / -{h.countDown}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 function StatCard({
   label,
@@ -27,15 +90,23 @@ function StatCard({
 export function StatsPanel() {
   const open = useStore((s) => s.statsOpen);
   const setOpen = useStore((s) => s.setStatsOpen);
+  const setWardrobeOpen = useStore((s) => s.setWardrobeOpen);
   const character = useStore((s) => s.state.character);
   const stats = useStore((s) => s.state.stats);
   const tasks = useStore((s) => s.state.tasks);
   const bond = useStore((s) => s.state.bond);
+  const history = useStore((s) => s.state.history);
+  const fullState = useStore((s) => s.state);
 
   if (!open) return null;
 
   const stage = bondStage(bond);
   const nextStage = nextBondStage(bond);
+  const achievements = computeAchievements(fullState);
+  const unlockedCount = achievements.filter((a) => a.unlocked).length;
+  // Letters up to the deepest stage reached (either currently, or ever celebrated).
+  const reachedIndex = Math.max(stage.index, bond.lastStageIndex ?? 0);
+  const letters = BOND_STAGES.filter((b) => b.index <= reachedIndex);
   const daysTogether = Math.max(
     0,
     Math.floor((Date.now() - new Date(bond.firstMet).getTime()) / 86_400_000),
@@ -43,7 +114,8 @@ export function StatsPanel() {
 
   const activeDailies = tasks.filter((t) => t.type === "daily").length;
   const activeTodos = tasks.filter((t) => t.type === "todo").length;
-  const activeHabits = tasks.filter((t) => t.type === "habit").length;
+  const habitList = tasks.filter((t) => t.type === "habit") as Habit[];
+  const activeHabits = habitList.length;
   const xpNeeded = xpForLevel(character.level);
   const rank = rankForLevel(character.level);
   const upcoming = nextRank(character.level);
@@ -111,6 +183,10 @@ export function StatsPanel() {
             />
             <StatCard label="Gold" value={character.gold} accent="gold" />
             <StatCard
+              label="Habits scored"
+              value={stats.habitsScored.toLocaleString()}
+            />
+            <StatCard
               label="Times fallen"
               value={stats.timesFallen}
               accent="hp"
@@ -121,6 +197,65 @@ export function StatsPanel() {
             <span>{activeDailies} dailies</span>
             <span>{activeHabits} habits</span>
             <span>{activeTodos} to-dos</span>
+          </div>
+
+          <div className="trends">
+            <div className="trends__label">Last 17 weeks</div>
+            <Heatmap history={history} />
+          </div>
+
+          {habitList.length > 0 && (
+            <div className="trends">
+              <div className="trends__label">Habit balance</div>
+              <HabitBars habits={habitList} />
+            </div>
+          )}
+
+          <div className="trends">
+            <div className="trends__label">
+              Achievements ({unlockedCount}/{achievements.length})
+            </div>
+            <div className="ach-grid">
+              {achievements.map((a) => (
+                <div
+                  key={a.id}
+                  className={`ach ${a.unlocked ? "ach--on" : "ach--off"}`}
+                  title={a.desc}
+                >
+                  <div className="ach__icon">{a.unlocked ? "\u2726" : "\u25ef"}</div>
+                  <div className="ach__body">
+                    <div className="ach__label">{a.label}</div>
+                    <div className="ach__desc">{a.desc}</div>
+                    {!a.unlocked && (
+                      <div className="ach__track">
+                        <span style={{ width: `${Math.round(a.progress * 100)}%` }} />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="row" style={{ marginTop: 12 }}>
+            <button
+              className="btn btn--sm"
+              onClick={() => {
+                setOpen(false);
+                void runWeeklyReview();
+              }}
+            >
+              Weekly review with Leela
+            </button>
+            <button
+              className="btn btn--sm"
+              onClick={() => {
+                setOpen(false);
+                setWardrobeOpen(true);
+              }}
+            >
+              Wardrobe
+            </button>
           </div>
 
           <div className="rank-strip" style={{ marginTop: 14 }}>
@@ -135,6 +270,20 @@ export function StatsPanel() {
               </div>
             </div>
           </div>
+
+          {letters.length > 0 && (
+            <div className="trends">
+              <div className="trends__label">Notes from Leela</div>
+              <div className="letters">
+                {letters.map((b) => (
+                  <div className="letter" key={b.index}>
+                    <div className="letter__stage">{b.name}</div>
+                    <div className="letter__text">{b.letter}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="hint" style={{ marginTop: 12 }}>
             A streak grows for every day you clear all your active dailies. Miss

@@ -33,18 +33,62 @@ function XpBadge({ difficulty }: { difficulty: Task["difficulty"] }) {
   return <span className="xp-badge">{nominalXp(difficulty)} XP</span>;
 }
 
+function ReorderControl({
+  id,
+  first,
+  last,
+}: {
+  id: string;
+  first?: boolean;
+  last?: boolean;
+}) {
+  const moveTask = useStore((s) => s.moveTask);
+  if (first && last) return null;
+  return (
+    <div className="card__move">
+      <button
+        className="card__move-btn"
+        disabled={first}
+        onClick={(e) => {
+          e.stopPropagation();
+          moveTask(id, "up");
+        }}
+        aria-label="Move up"
+      >
+        {"\u25B2"}
+      </button>
+      <button
+        className="card__move-btn"
+        disabled={last}
+        onClick={(e) => {
+          e.stopPropagation();
+          moveTask(id, "down");
+        }}
+        aria-label="Move down"
+      >
+        {"\u25BC"}
+      </button>
+    </div>
+  );
+}
+
 function CardShell({
   task,
   control,
   done,
+  first,
+  last,
 }: {
   task: Task;
   control: ReactNode;
   done?: boolean;
+  first?: boolean;
+  last?: boolean;
 }) {
   const setEditing = useStore((s) => s.setEditing);
   return (
     <div className={`card card--${task.type} ${done ? "card--done" : ""}`}>
+      <ReorderControl id={task.id} first={first} last={last} />
       <TaskHexIcon type={task.type} />
       <div className="card__body" onClick={() => setEditing(task)}>
         <div className={`card__title ${done ? "card__title--struck" : ""}`}>
@@ -66,6 +110,10 @@ function CardShell({
               +{(task as Habit).countUp} / -{(task as Habit).countDown}
             </span>
           )}
+          {task.remindAt && <span className="chip">{"\u23F0"}</span>}
+          {task.tags?.map((tag) => (
+            <span className="chip chip--tag" key={tag}>#{tag}</span>
+          ))}
         </div>
         {(task.type === "daily" || task.type === "todo") && (
           <Checklist task={task as Daily | Todo} />
@@ -79,7 +127,15 @@ function CardShell({
   );
 }
 
-export function TaskCard({ task }: { task: Task }) {
+export function TaskCard({
+  task,
+  first,
+  last,
+}: {
+  task: Task;
+  first?: boolean;
+  last?: boolean;
+}) {
   const scoreHabit = useStore((s) => s.scoreHabit);
   const toggleDaily = useStore((s) => s.toggleDaily);
   const toggleTodo = useStore((s) => s.toggleTodo);
@@ -91,6 +147,8 @@ export function TaskCard({ task }: { task: Task }) {
     return (
       <CardShell
         task={task}
+        first={first}
+        last={last}
         control={
           <div className="habit-controls">
             <button
@@ -118,6 +176,8 @@ export function TaskCard({ task }: { task: Task }) {
     return (
       <CardShell
         task={task}
+        first={first}
+        last={last}
         done={d.done}
         control={
           <button
@@ -137,6 +197,8 @@ export function TaskCard({ task }: { task: Task }) {
     return (
       <CardShell
         task={task}
+        first={first}
+        last={last}
         done={t.done}
         control={
           <button
@@ -155,6 +217,8 @@ export function TaskCard({ task }: { task: Task }) {
   return (
     <CardShell
       task={task}
+      first={first}
+      last={last}
       control={
         <button
           className="reward-cost"

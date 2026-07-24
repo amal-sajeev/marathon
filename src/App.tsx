@@ -8,17 +8,40 @@ import { Toasts } from "./components/Toasts";
 import { Celebrate } from "./components/Celebrate";
 import { FallenOverlay } from "./components/FallenOverlay";
 import { StatsPanel } from "./components/StatsPanel";
+import { SuppliesPanel } from "./components/SuppliesPanel";
+import { WardrobePanel } from "./components/WardrobePanel";
+import { MoodSheet } from "./components/MoodSheet";
+import { BondMilestone } from "./components/BondMilestone";
 import { Welcome } from "./components/Welcome";
 import { AssetImage } from "./components/AssetImage";
 import { ChatPanel } from "./agent/ChatPanel";
+import { accentStyle } from "./game/accent";
+import { useBondWatcher } from "./game/useBondWatcher";
+import { bondStage, stageColor } from "./game/bond";
+import { useEffect, type CSSProperties } from "react";
 
 export function App() {
   const ready = useStore((s) => s.ready);
   const setChatOpen = useStore((s) => s.setChatOpen);
   const setSettingsOpen = useStore((s) => s.setSettingsOpen);
   const setStatsOpen = useStore((s) => s.setStatsOpen);
+  const setSuppliesOpen = useStore((s) => s.setSuppliesOpen);
   const fileName = useStore((s) => s.fileName);
   const saveStatus = useStore((s) => s.saveStatus);
+  const cosmetics = useStore((s) => s.state.cosmetics);
+  const bond = useStore((s) => s.state.bond);
+  const setAddOpen = useStore((s) => s.setAddOpen);
+  useBondWatcher();
+
+  // Home-screen shortcuts route in via a URL hash.
+  useEffect(() => {
+    const hash = window.location.hash.replace("#", "");
+    if (hash === "add" || hash === "chat") {
+      history.replaceState(null, "", window.location.pathname + window.location.search);
+      if (hash === "add") setAddOpen("daily");
+      if (hash === "chat") setChatOpen(true);
+    }
+  }, [setAddOpen, setChatOpen]);
 
   if (!ready) {
     return (
@@ -36,8 +59,13 @@ export function App() {
         : `${fileName} - synced`
     : "Saved in this browser";
 
+  const rootStyle: CSSProperties = {
+    ...(accentStyle(cosmetics.accent) ?? {}),
+    ["--bond-glow" as string]: stageColor(bondStage(bond).index),
+  };
+
   return (
-    <div className="app">
+    <div className="app" style={rootStyle} data-frame={cosmetics.badgeFrame || undefined}>
       <div className="scanline" />
       <div
         style={{
@@ -60,6 +88,13 @@ export function App() {
           Marathon
         </span>
         <div style={{ display: "flex", gap: 8 }}>
+          <button
+            className="icon-btn"
+            onClick={() => setSuppliesOpen(true)}
+            aria-label="Supplies"
+          >
+            {"\u2695"}
+          </button>
           <button
             className="icon-btn"
             onClick={() => setStatsOpen(true)}
@@ -86,7 +121,7 @@ export function App() {
       </div>
 
       <button
-        className="agent-fab"
+        className={`agent-fab ${cosmetics.orbSkin ? `agent-fab--${cosmetics.orbSkin}` : ""}`}
         onClick={() => setChatOpen(true)}
         aria-label="Talk to your companion"
       >
@@ -95,10 +130,14 @@ export function App() {
 
       <Toasts />
       <Celebrate />
+      <BondMilestone />
       <FallenOverlay />
       <ChatPanel />
       <SettingsPanel />
       <StatsPanel />
+      <SuppliesPanel />
+      <WardrobePanel />
+      <MoodSheet />
       <AddEditSheet />
       <Welcome />
     </div>

@@ -4,11 +4,15 @@ import { runCron, todayStr } from "./cron";
 import type {
   Bond,
   Character,
+  Cosmetics,
   Daily,
+  DayRecord,
   Difficulty,
+  Followup,
   GameState,
   Habit,
   Memory,
+  MoodEntry,
   Reward,
   Settings,
   Stats,
@@ -16,6 +20,7 @@ import type {
   TaskType,
   Todo,
 } from "./types";
+import { CONSUMABLES, cosmeticById } from "../game/cosmetics";
 
 export function uid(): string {
   return (
@@ -35,6 +40,8 @@ export function freshCharacter(name = "Adventurer"): Character {
     maxHp: 50,
     xp: 0,
     gold: 0,
+    inventory: { hpPotion: 0, xpCharm: 0, streakShield: 0 },
+    buffs: {},
   };
 }
 
@@ -45,11 +52,16 @@ export function freshStats(): Stats {
     currentStreak: 0,
     longestStreak: 0,
     timesFallen: 0,
+    habitsScored: 0,
   };
 }
 
 export function freshBond(): Bond {
-  return { firstMet: nowIso(), interactions: 0 };
+  return { firstMet: nowIso(), interactions: 0, lastStageIndex: 0 };
+}
+
+export function freshCosmetics(): Cosmetics {
+  return { accent: "", orbSkin: "", badgeFrame: "", owned: [] };
 }
 
 export function freshState(name?: string): GameState {
@@ -59,8 +71,14 @@ export function freshState(name?: string): GameState {
     stats: freshStats(),
     memories: [],
     bond: freshBond(),
+    moods: [],
+    history: [],
+    cosmetics: freshCosmetics(),
+    followups: [],
+    engagement: { loginStreak: 0 },
     createdAt: nowIso(),
     lastCron: todayStr(),
+    updatedAt: nowIso(),
   };
 }
 
@@ -68,12 +86,32 @@ export function freshState(name?: string): GameState {
 export function normalizeState(state: GameState): GameState {
   return {
     ...state,
+    character: {
+      ...state.character,
+      inventory: {
+        hpPotion: state.character?.inventory?.hpPotion ?? 0,
+        xpCharm: state.character?.inventory?.xpCharm ?? 0,
+        streakShield: state.character?.inventory?.streakShield ?? 0,
+      },
+      buffs: state.character?.buffs ?? {},
+    },
     stats: { ...freshStats(), ...(state.stats ?? {}) },
     memories: Array.isArray(state.memories) ? state.memories : [],
     bond: {
       firstMet: state.bond?.firstMet ?? state.createdAt ?? nowIso(),
       interactions: state.bond?.interactions ?? 0,
+      lastStageIndex: state.bond?.lastStageIndex ?? 0,
     },
+    moods: Array.isArray(state.moods) ? state.moods : [],
+    history: Array.isArray(state.history) ? state.history : [],
+    cosmetics: { ...freshCosmetics(), ...(state.cosmetics ?? {}) },
+    followups: Array.isArray(state.followups) ? state.followups : [],
+    engagement: {
+      loginStreak: state.engagement?.loginStreak ?? 0,
+      lastGiftDate: state.engagement?.lastGiftDate,
+      lastLoginDate: state.engagement?.lastLoginDate,
+    },
+    updatedAt: state.updatedAt ?? nowIso(),
   };
 }
 
@@ -81,6 +119,8 @@ export interface Toast {
   id: string;
   text: string;
   kind: "gain" | "loss" | "level" | "info";
+  /** show an Undo button that restores the pre-action snapshot */
+  undo?: boolean;
 }
 
 export type Tab = "dailies" | "habits" | "todos" | "rewards";
@@ -90,11 +130,18 @@ interface UIState {
   chatOpen: boolean;
   settingsOpen: boolean;
   statsOpen: boolean;
+  suppliesOpen: boolean;
+  wardrobeOpen: boolean;
+  moodOpen: boolean;
   addOpen: TaskType | null;
   editing: Task | null;
   toasts: Toast[];
   celebrateLevel: number | null;
   fallen: number | null;
+  /** the newly reached bond stage index, shown as a milestone overlay */
+  bondMilestone: number | null;
+  /** snapshot to restore when the user taps Undo */
+  undo: { label: string; snapshot: GameState } | null;
 }
 
 interface StoreState extends UIState {
@@ -118,12 +165,17 @@ interface StoreState extends UIState {
   setChatOpen: (v: boolean) => void;
   setSettingsOpen: (v: boolean) => void;
   setStatsOpen: (v: boolean) => void;
+  setSuppliesOpen: (v: boolean) => void;
+  setWardrobeOpen: (v: boolean) => void;
+  setMoodOpen: (v: boolean) => void;
   setAddOpen: (t: TaskType | null) => void;
   setEditing: (t: Task | null) => void;
-  pushToast: (text: string, kind?: Toast["kind"]) => void;
+  pushToast: (text: string, kind?: Toast["kind"], opts?: { undo?: boolean }) => void;
   dismissToast: (id: string) => void;
   clearCelebrate: () => void;
   clearFallen: () => void;
+  clearBondMilestone: () => void;
+  undoLast: () => void;
 
   // settings
   setSettings: (patch: Partial<Settings>) => void;
@@ -132,14 +184,34 @@ interface StoreState extends UIState {
   addTask: (input: NewTaskInput) => Task;
   updateTask: (id: string, patch: Partial<Task>) => void;
   deleteTask: (id: string) => void;
+  moveTask: (id: string, dir: "up" | "down") => void;
   scoreHabit: (id: string, dir: "up" | "down") => void;
   toggleDaily: (id: string) => void;
   toggleTodo: (id: string) => void;
   buyReward: (id: string) => void;
   toggleChecklistItem: (taskId: string, itemId: string) => void;
 
+  // consumables + cosmetics
+  buyConsumable: (kind: "hpPotion" | "xpCharm" | "streakShield") => void;
+  useHpPotion: () => void;
+  useXpCharm: () => void;
+  buyCosmetic: (id: string) => void;
+  equipCosmetic: (id: string) => void;
+
+  // mood
+  addMood: (mood: number, note?: string) => void;
+
+  // engagement
+  registerLogin: () => void;
+  claimDailyGift: () => { text: string } | null;
+  addFollowup: (text: string, dueDate?: string) => Followup | null;
+  completeFollowup: (id: string) => void;
+
   // cron
   runCronNow: () => void;
+
+  // bond
+  markBondStage: (index: number) => void;
 
   // character
   renameCharacter: (name: string) => void;
@@ -173,6 +245,28 @@ export interface NewTaskInput {
   cost?: number;
   checklist?: string[];
   tags?: string[];
+  remindAt?: string;
+}
+
+/** Fold a day's activity into the rolling history, keeping the last ~150 days. */
+function withDayLog(
+  history: DayRecord[],
+  completed: number,
+  xp: number,
+): DayRecord[] {
+  const date = todayStr();
+  const list = [...(history ?? [])];
+  let i = list.findIndex((d) => d.date === date);
+  if (i < 0) {
+    list.push({ date, completed: 0, xp: 0 });
+    i = list.length - 1;
+  }
+  list[i] = {
+    date,
+    completed: Math.max(0, list[i].completed + completed),
+    xp: Math.max(0, list[i].xp + xp),
+  };
+  return list.slice(-150);
 }
 
 function buildTask(input: NewTaskInput): Task {
@@ -184,6 +278,7 @@ function buildTask(input: NewTaskInput): Task {
     createdAt: nowIso(),
     updatedAt: nowIso(),
     tags: input.tags,
+    remindAt: input.remindAt,
   };
   const checklist = (input.checklist ?? []).map((text) => ({
     id: uid(),
@@ -235,6 +330,11 @@ const defaultSettings: Settings = {
   checkInsEnabled: false,
   checkInTimes: ["09:00", "20:00"],
   pushUrl: "",
+  weeklyReview: false,
+  spontaneousEnabled: false,
+  spontaneousCount: 2,
+  spontaneousStart: "10:00",
+  spontaneousEnd: "21:00",
 };
 
 export const useStore = create<StoreState>((set, get) => ({
@@ -249,11 +349,16 @@ export const useStore = create<StoreState>((set, get) => ({
   chatOpen: false,
   settingsOpen: false,
   statsOpen: false,
+  suppliesOpen: false,
+  wardrobeOpen: false,
+  moodOpen: false,
   addOpen: null,
   editing: null,
   toasts: [],
   celebrateLevel: null,
   fallen: null,
+  bondMilestone: null,
+  undo: null,
 
   hydrate: (state, settings) => set({ state, settings, ready: true }),
   replaceState: (state) => set({ state }),
@@ -266,17 +371,28 @@ export const useStore = create<StoreState>((set, get) => ({
   setChatOpen: (v) => set({ chatOpen: v }),
   setSettingsOpen: (v) => set({ settingsOpen: v }),
   setStatsOpen: (v) => set({ statsOpen: v }),
+  setSuppliesOpen: (v) => set({ suppliesOpen: v }),
+  setWardrobeOpen: (v) => set({ wardrobeOpen: v }),
+  setMoodOpen: (v) => set({ moodOpen: v }),
   setAddOpen: (t) => set({ addOpen: t }),
   setEditing: (t) => set({ editing: t }),
-  pushToast: (text, kind = "info") => {
-    const toast: Toast = { id: uid(), text, kind };
+  pushToast: (text, kind = "info", opts) => {
+    const toast: Toast = { id: uid(), text, kind, undo: opts?.undo };
     set((s) => ({ toasts: [...s.toasts, toast] }));
-    setTimeout(() => get().dismissToast(toast.id), 3600);
+    // Undo toasts linger a little longer so there's time to tap.
+    setTimeout(() => get().dismissToast(toast.id), opts?.undo ? 6000 : 3600);
   },
   dismissToast: (id) =>
     set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
   clearCelebrate: () => set({ celebrateLevel: null }),
   clearFallen: () => set({ fallen: null }),
+  clearBondMilestone: () => set({ bondMilestone: null }),
+  undoLast: () => {
+    const { undo } = get();
+    if (!undo) return;
+    set({ state: undo.snapshot, undo: null });
+    get().pushToast("Undone", "info");
+  },
 
   setSettings: (patch) =>
     set((s) => ({ settings: { ...s.settings, ...patch } })),
@@ -297,10 +413,32 @@ export const useStore = create<StoreState>((set, get) => ({
       },
     })),
 
-  deleteTask: (id) =>
-    set((s) => ({
-      state: { ...s.state, tasks: s.state.tasks.filter((t) => t.id !== id) },
-    })),
+  deleteTask: (id) => {
+    const s = get();
+    const task = s.state.tasks.find((t) => t.id === id);
+    const snapshot = s.state;
+    set((st) => ({
+      state: { ...st.state, tasks: st.state.tasks.filter((t) => t.id !== id) },
+      undo: { label: "delete", snapshot },
+    }));
+    s.pushToast(task ? `Deleted "${task.title}"` : "Deleted", "info", { undo: true });
+  },
+
+  moveTask: (id, dir) =>
+    set((s) => {
+      const tasks = [...s.state.tasks];
+      const from = tasks.findIndex((t) => t.id === id);
+      if (from < 0) return {};
+      const type = tasks[from].type;
+      // find the neighbor of the same type in the requested direction
+      const step = dir === "up" ? -1 : 1;
+      let to = from + step;
+      while (to >= 0 && to < tasks.length && tasks[to].type !== type) to += step;
+      if (to < 0 || to >= tasks.length) return {};
+      const [moved] = tasks.splice(from, 1);
+      tasks.splice(to, 0, moved);
+      return { state: { ...s.state, tasks } };
+    }),
 
   scoreHabit: (id, dir) => {
     const s = get();
@@ -322,7 +460,9 @@ export const useStore = create<StoreState>((set, get) => ({
           stats: {
             ...st.state.stats,
             totalXp: st.state.stats.totalXp + res.xpGained,
+            habitsScored: st.state.stats.habitsScored + 1,
           },
+          history: withDayLog(st.state.history, 1, res.xpGained),
           tasks: st.state.tasks.map((t) =>
             t.id === id
               ? ({ ...habit, value: habit.value + 1, countUp: habit.countUp + 1 })
@@ -369,6 +509,7 @@ export const useStore = create<StoreState>((set, get) => ({
     if (!task || task.type !== "daily") return;
     const daily = task as Daily;
     const willComplete = !daily.done;
+    const snapshot = s.state;
 
     let character = s.state.character;
     let xpGained = 0;
@@ -376,7 +517,9 @@ export const useStore = create<StoreState>((set, get) => ({
       const res = applyGain(character, daily.difficulty);
       character = res.character;
       xpGained = res.xpGained;
-      s.pushToast(`+${res.xpGained} XP, +${res.goldGained} gold`, "gain");
+      s.pushToast(`+${res.xpGained} XP, +${res.goldGained} gold`, "gain", {
+        undo: true,
+      });
       if (res.leveledUp) {
         set({ celebrateLevel: res.character.level });
         s.pushToast(`Level ${res.character.level}!`, "level");
@@ -384,6 +527,7 @@ export const useStore = create<StoreState>((set, get) => ({
     }
 
     set((st) => ({
+      undo: willComplete ? { label: "complete", snapshot } : st.undo,
       state: {
         ...st.state,
         character,
@@ -395,6 +539,7 @@ export const useStore = create<StoreState>((set, get) => ({
             st.state.stats.tasksCompleted + (willComplete ? 1 : -1),
           ),
         },
+        history: withDayLog(st.state.history, willComplete ? 1 : -1, xpGained),
         tasks: st.state.tasks.map((t) =>
           t.id === id
             ? ({
@@ -417,6 +562,7 @@ export const useStore = create<StoreState>((set, get) => ({
     if (!task || task.type !== "todo") return;
     const todo = task as Todo;
     const willComplete = !todo.done;
+    const snapshot = s.state;
 
     let character = s.state.character;
     let xpGained = 0;
@@ -424,7 +570,9 @@ export const useStore = create<StoreState>((set, get) => ({
       const res = applyGain(character, todo.difficulty);
       character = res.character;
       xpGained = res.xpGained;
-      s.pushToast(`+${res.xpGained} XP, +${res.goldGained} gold`, "gain");
+      s.pushToast(`+${res.xpGained} XP, +${res.goldGained} gold`, "gain", {
+        undo: true,
+      });
       if (res.leveledUp) {
         set({ celebrateLevel: res.character.level });
         s.pushToast(`Level ${res.character.level}!`, "level");
@@ -432,6 +580,7 @@ export const useStore = create<StoreState>((set, get) => ({
     }
 
     set((st) => ({
+      undo: willComplete ? { label: "complete", snapshot } : st.undo,
       state: {
         ...st.state,
         character,
@@ -443,6 +592,7 @@ export const useStore = create<StoreState>((set, get) => ({
             st.state.stats.tasksCompleted + (willComplete ? 1 : -1),
           ),
         },
+        history: withDayLog(st.state.history, willComplete ? 1 : -1, xpGained),
         tasks: st.state.tasks.map((t) =>
           t.id === id
             ? ({
@@ -466,8 +616,14 @@ export const useStore = create<StoreState>((set, get) => ({
       s.pushToast("Not enough gold for that yet", "info");
       return;
     }
-    set((st) => ({ state: { ...st.state, character: next } }));
-    s.pushToast(`Bought ${reward.title} (-${reward.cost} gold)`, "info");
+    const snapshot = s.state;
+    set((st) => ({
+      state: { ...st.state, character: next },
+      undo: { label: "buy", snapshot },
+    }));
+    s.pushToast(`Bought ${reward.title} (-${reward.cost} gold)`, "info", {
+      undo: true,
+    });
   },
 
   toggleChecklistItem: (taskId, itemId) =>
@@ -488,6 +644,215 @@ export const useStore = create<StoreState>((set, get) => ({
       },
     })),
 
+  buyConsumable: (kind) => {
+    const s = get();
+    const info = CONSUMABLES[kind];
+    const next = spendGold(s.state.character, info.cost);
+    if (!next) {
+      s.pushToast("Not enough gold for that yet", "info");
+      return;
+    }
+    set((st) => ({
+      state: {
+        ...st.state,
+        character: {
+          ...next,
+          inventory: {
+            ...st.state.character.inventory,
+            [kind]: st.state.character.inventory[kind] + 1,
+          },
+        },
+      },
+    }));
+    s.pushToast(`Bought a ${info.label} (-${info.cost} gold)`, "info");
+  },
+
+  useHpPotion: () => {
+    const s = get();
+    const c = s.state.character;
+    if (c.inventory.hpPotion <= 0) {
+      s.pushToast("No HP potions left", "info");
+      return;
+    }
+    if (c.hp >= c.maxHp) {
+      s.pushToast("Already at full HP", "info");
+      return;
+    }
+    const restored = Math.round(c.maxHp * 0.4 * 10) / 10;
+    const hp = Math.min(c.maxHp, Math.round((c.hp + restored) * 10) / 10);
+    set((st) => ({
+      state: {
+        ...st.state,
+        character: {
+          ...st.state.character,
+          hp,
+          inventory: {
+            ...st.state.character.inventory,
+            hpPotion: st.state.character.inventory.hpPotion - 1,
+          },
+        },
+      },
+    }));
+    s.pushToast(`+${Math.round(hp - c.hp)} HP`, "gain");
+  },
+
+  useXpCharm: () => {
+    const s = get();
+    const c = s.state.character;
+    if (c.inventory.xpCharm <= 0) {
+      s.pushToast("No XP charms left", "info");
+      return;
+    }
+    const end = new Date();
+    end.setHours(23, 59, 59, 999);
+    set((st) => ({
+      state: {
+        ...st.state,
+        character: {
+          ...st.state.character,
+          buffs: { ...st.state.character.buffs, xpMultUntil: end.toISOString() },
+          inventory: {
+            ...st.state.character.inventory,
+            xpCharm: st.state.character.inventory.xpCharm - 1,
+          },
+        },
+      },
+    }));
+    s.pushToast("XP charm active: 1.5x XP until midnight", "gain");
+  },
+
+  buyCosmetic: (id) => {
+    const s = get();
+    const cosmetic = cosmeticById(id);
+    if (!cosmetic) return;
+    if (s.state.cosmetics.owned.includes(id) || cosmetic.cost === 0) return;
+    const next = spendGold(s.state.character, cosmetic.cost);
+    if (!next) {
+      s.pushToast("Not enough gold for that yet", "info");
+      return;
+    }
+    set((st) => ({
+      state: {
+        ...st.state,
+        character: next,
+        cosmetics: {
+          ...st.state.cosmetics,
+          owned: [...st.state.cosmetics.owned, id],
+        },
+      },
+    }));
+    s.pushToast(`Unlocked ${cosmetic.label}`, "info");
+  },
+
+  equipCosmetic: (id) => {
+    const cosmetic = cosmeticById(id);
+    if (!cosmetic) return;
+    const s = get();
+    const owned = cosmetic.cost === 0 || s.state.cosmetics.owned.includes(id);
+    if (!owned) return;
+    set((st) => ({
+      state: {
+        ...st.state,
+        cosmetics: { ...st.state.cosmetics, [cosmetic.slot]: cosmetic.value },
+      },
+    }));
+  },
+
+  addMood: (mood, note) => {
+    const clean = Math.max(1, Math.min(5, Math.round(mood)));
+    const entry: MoodEntry = {
+      id: uid(),
+      date: todayStr(),
+      mood: clean,
+      note: note?.trim() || undefined,
+      createdAt: nowIso(),
+    };
+    set((s) => ({
+      state: { ...s.state, moods: [...s.state.moods.slice(-200), entry] },
+    }));
+  },
+
+  registerLogin: () => {
+    const today = todayStr();
+    const s = get();
+    const eng = s.state.engagement;
+    if (eng.lastLoginDate === today) return;
+    // Yesterday -> continue the streak; otherwise start over.
+    const y = new Date();
+    y.setDate(y.getDate() - 1);
+    const yesterday = todayStr(y);
+    const loginStreak = eng.lastLoginDate === yesterday ? eng.loginStreak + 1 : 1;
+    set((st) => ({
+      state: {
+        ...st.state,
+        engagement: { ...st.state.engagement, lastLoginDate: today, loginStreak },
+      },
+    }));
+  },
+
+  claimDailyGift: () => {
+    const today = todayStr();
+    const s = get();
+    if (s.state.engagement.lastGiftDate === today) return null;
+
+    const streak = Math.max(1, s.state.engagement.loginStreak);
+    // Mostly gold that grows a little with the login streak; occasionally a
+    // consumable so it feels like a real gift.
+    const roll = Math.random();
+    let text: string;
+    let character = s.state.character;
+    if (roll < 0.2) {
+      character = {
+        ...character,
+        inventory: { ...character.inventory, hpPotion: character.inventory.hpPotion + 1 },
+      };
+      text = "an HP potion";
+    } else if (roll < 0.32) {
+      character = {
+        ...character,
+        inventory: { ...character.inventory, xpCharm: character.inventory.xpCharm + 1 },
+      };
+      text = "an XP charm";
+    } else {
+      const gold = 5 + Math.min(20, streak * 2);
+      character = { ...character, gold: character.gold + gold };
+      text = `${gold} gold`;
+    }
+    set((st) => ({
+      state: {
+        ...st.state,
+        character,
+        engagement: { ...st.state.engagement, lastGiftDate: today },
+      },
+    }));
+    return { text };
+  },
+
+  addFollowup: (text, dueDate) => {
+    const clean = text.trim();
+    if (!clean) return null;
+    const followup: Followup = {
+      id: uid(),
+      text: clean,
+      dueDate: dueDate?.trim() || undefined,
+      createdAt: nowIso(),
+    };
+    set((s) => ({
+      state: { ...s.state, followups: [...s.state.followups.slice(-50), followup] },
+    }));
+    return followup;
+  },
+
+  completeFollowup: (id) =>
+    set((s) => ({
+      state: {
+        ...s.state,
+        followups: s.state.followups.map((f) =>
+          f.id === id ? { ...f, done: true } : f,
+        ),
+      },
+    })),
+
   runCronNow: () => {
     const s = get();
     const { state, summary } = runCron(s.state);
@@ -495,17 +860,33 @@ export const useStore = create<StoreState>((set, get) => ({
 
     // Update the day-streak based on yesterday's performance.
     let stats = state.stats;
+    let character = state.character;
+    let shieldUsed = false;
     if (summary.hadActive) {
-      const currentStreak = summary.allDone ? stats.currentStreak + 1 : 0;
-      stats = {
-        ...stats,
-        currentStreak,
-        longestStreak: Math.max(stats.longestStreak, currentStreak),
-      };
+      if (summary.allDone) {
+        const currentStreak = stats.currentStreak + 1;
+        stats = {
+          ...stats,
+          currentStreak,
+          longestStreak: Math.max(stats.longestStreak, currentStreak),
+        };
+      } else if (character.inventory.streakShield > 0) {
+        // A missed day, but a shield keeps the streak intact.
+        shieldUsed = true;
+        character = {
+          ...character,
+          inventory: {
+            ...character.inventory,
+            streakShield: character.inventory.streakShield - 1,
+          },
+        };
+      } else {
+        stats = { ...stats, currentStreak: 0 };
+      }
     }
 
     // If the accumulated daily damage was fatal, the adventurer falls.
-    const rev = reviveIfDead(state.character);
+    const rev = reviveIfDead(character);
     if (rev.died) {
       stats = { ...stats, timesFallen: stats.timesFallen + 1, currentStreak: 0 };
       set({ fallen: rev.character.level });
@@ -515,6 +896,8 @@ export const useStore = create<StoreState>((set, get) => ({
 
     if (rev.died) {
       s.pushToast("You fell overnight. Lost a level and some gold.", "loss");
+    } else if (shieldUsed) {
+      s.pushToast("A streak shield absorbed a missed day. Streak safe.", "info");
     } else if (summary.missed > 0) {
       s.pushToast(
         `A new day. ${summary.missed} missed ${
@@ -526,6 +909,12 @@ export const useStore = create<StoreState>((set, get) => ({
       s.pushToast("A fresh day. Dailies reset.", "info");
     }
   },
+
+  markBondStage: (index) =>
+    set((s) => ({
+      bondMilestone: index,
+      state: { ...s.state, bond: { ...s.state.bond, lastStageIndex: index } },
+    })),
 
   renameCharacter: (name) =>
     set((s) => ({

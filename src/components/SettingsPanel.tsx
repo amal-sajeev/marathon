@@ -1,17 +1,24 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useStore } from "../state/store";
 import {
   createNewSaveFile,
   detachSaveFile,
   exportSaveDownload,
   importSaveUpload,
+  listBackups,
   loadSaveFile,
   reconnectSaveFile,
+  restoreBackup,
+  type BackupEntry,
 } from "../save/persistence";
 import {
+  getPushStatus,
   permissionStatus,
   requestPermission,
+  resyncPush,
+  sendTestPush,
   supportsNotifications,
+  type PushStatus,
 } from "../notify/notifications";
 import { runCheckIn } from "../agent/checkin";
 
@@ -38,6 +45,19 @@ export function SettingsPanel() {
 
   const [showKey, setShowKey] = useState(false);
   const [newMemory, setNewMemory] = useState("");
+  const [backups, setBackups] = useState<BackupEntry[]>([]);
+  const [pushStatus, setPushStatus] = useState<PushStatus | null>(null);
+
+  const refreshPushStatus = () => {
+    void getPushStatus().then(setPushStatus);
+  };
+
+  useEffect(() => {
+    if (open) {
+      void listBackups().then((b) => setBackups([...b].reverse()));
+      refreshPushStatus();
+    }
+  }, [open]);
 
   if (!open) return null;
 
@@ -233,6 +253,18 @@ export function SettingsPanel() {
             </div>
 
             <label
+              style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 12 }}
+            >
+              <input
+                type="checkbox"
+                style={{ flex: "0 0 auto", width: 18, height: 18 }}
+                checked={settings.weeklyReview}
+                onChange={(e) => setSettings({ weeklyReview: e.target.checked })}
+              />
+              <span>Weekly review with Leela (Sundays)</span>
+            </label>
+
+            <label
               className="field__label"
               style={{ marginTop: 12, display: "block" }}
             >
@@ -251,6 +283,116 @@ export function SettingsPanel() {
               paste its URL here. Leave blank to use best-effort local reminders
               only.
             </div>
+
+            {settings.pushUrl.trim() !== "" && (
+              <div
+                style={{
+                  marginTop: 10,
+                  padding: "10px 12px",
+                  borderRadius: 12,
+                  background: "rgba(255,255,255,0.03)",
+                  border: "1px solid rgba(255,255,255,0.08)",
+                }}
+              >
+                <div style={{ fontSize: 12, lineHeight: 1.6 }}>
+                  <div>
+                    Permission:{" "}
+                    <strong>
+                      {pushStatus ? pushStatus.permission : "checking..."}
+                    </strong>
+                  </div>
+                  <div>
+                    Subscription:{" "}
+                    <strong style={{ color: pushStatus?.subscribed ? "var(--neon-soft)" : "var(--danger)" }}>
+                      {pushStatus
+                        ? pushStatus.subscribed
+                          ? "active"
+                          : "not subscribed"
+                        : "checking..."}
+                    </strong>
+                  </div>
+                </div>
+                <div className="row" style={{ marginTop: 8 }}>
+                  <button
+                    className="btn btn--sm"
+                    onClick={async () => {
+                      await resyncPush();
+                      refreshPushStatus();
+                    }}
+                  >
+                    Reconnect push
+                  </button>
+                  <button
+                    className="btn btn--ghost btn--sm"
+                    onClick={async () => {
+                      await sendTestPush();
+                      refreshPushStatus();
+                    }}
+                  >
+                    Send test notification
+                  </button>
+                </div>
+                <div className="hint" style={{ marginTop: 6 }}>
+                  Tap "Send test notification", then lock or close the app; it
+                  should still arrive. If it doesn't, tap "Reconnect push".
+                </div>
+              </div>
+            )}
+
+            <label
+              style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 14 }}
+            >
+              <input
+                type="checkbox"
+                style={{ flex: "0 0 auto", width: 18, height: 18 }}
+                checked={!!settings.spontaneousEnabled}
+                onChange={(e) => setSettings({ spontaneousEnabled: e.target.checked })}
+              />
+              <span>Spontaneous check-ins (Leela pings at random times)</span>
+            </label>
+            {settings.spontaneousEnabled && (
+              <div style={{ marginTop: 8 }}>
+                <div className="row" style={{ alignItems: "center" }}>
+                  <label className="field__label" style={{ flex: 1, margin: 0 }}>
+                    Times per day
+                  </label>
+                  <input
+                    className="input"
+                    type="number"
+                    min={1}
+                    max={6}
+                    value={settings.spontaneousCount ?? 2}
+                    style={{ flex: "0 0 84px" }}
+                    onChange={(e) =>
+                      setSettings({
+                        spontaneousCount: Math.max(1, Math.min(6, Number(e.target.value) || 1)),
+                      })
+                    }
+                  />
+                </div>
+                <div className="row" style={{ marginTop: 8, alignItems: "center" }}>
+                  <input
+                    className="input"
+                    type="time"
+                    value={settings.spontaneousStart ?? "10:00"}
+                    onChange={(e) => setSettings({ spontaneousStart: e.target.value })}
+                    style={{ flex: 1 }}
+                  />
+                  <span style={{ flex: "0 0 auto", opacity: 0.7 }}>to</span>
+                  <input
+                    className="input"
+                    type="time"
+                    value={settings.spontaneousEnd ?? "21:00"}
+                    onChange={(e) => setSettings({ spontaneousEnd: e.target.value })}
+                    style={{ flex: 1 }}
+                  />
+                </div>
+                <div className="hint" style={{ marginTop: 6 }}>
+                  Needs the push server above. She'll surprise you within this
+                  window - never more than you set.
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="field">
@@ -404,6 +546,39 @@ export function SettingsPanel() {
                 <button className="btn btn--ghost btn--sm" onClick={guard(importSaveUpload)}>
                   Import copy
                 </button>
+              </div>
+            )}
+          </div>
+
+          <div className="field">
+            <label className="field__label">Local backups</label>
+            <div className="hint" style={{ marginTop: 0, marginBottom: 8 }}>
+              Automatic snapshots kept in this browser. If something goes wrong,
+              restore a recent one.
+            </div>
+            {backups.length === 0 ? (
+              <div className="hint" style={{ opacity: 0.8 }}>
+                No backups yet. They start collecting as you play.
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {backups.map((b) => (
+                  <div className="row" key={b.savedAt} style={{ alignItems: "center" }}>
+                    <span style={{ flex: 1, fontSize: 13 }}>
+                      {new Date(b.savedAt).toLocaleString()}
+                    </span>
+                    <button
+                      className="btn btn--ghost btn--sm"
+                      style={{ flex: "0 0 auto" }}
+                      onClick={() => {
+                        void restoreBackup(b.savedAt);
+                        setOpen(false);
+                      }}
+                    >
+                      Restore
+                    </button>
+                  </div>
+                ))}
               </div>
             )}
           </div>

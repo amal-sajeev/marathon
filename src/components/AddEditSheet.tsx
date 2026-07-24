@@ -29,6 +29,8 @@ interface FormState {
   dueDate: string;
   cost: number;
   checklistText: string;
+  tagsText: string;
+  remindAt: string;
 }
 
 function initForm(task: Task | null): FormState {
@@ -46,6 +48,8 @@ function initForm(task: Task | null): FormState {
       task && (task.type === "daily" || task.type === "todo")
         ? (task as Daily | Todo).checklist.map((c) => c.text).join("\n")
         : "",
+    tagsText: task?.tags?.join(", ") ?? "",
+    remindAt: task?.remindAt ?? "",
   };
 }
 
@@ -94,6 +98,11 @@ export function AddEditSheet() {
     .map((s) => s.trim())
     .filter(Boolean);
 
+  const tags = form.tagsText
+    .split(",")
+    .map((s) => s.trim().replace(/^#/, ""))
+    .filter(Boolean);
+
   const submit = () => {
     if (!form.title.trim()) return;
     if (isEdit && editing) {
@@ -101,6 +110,11 @@ export function AddEditSheet() {
         title: form.title.trim(),
         notes: form.notes.trim() || undefined,
         difficulty: form.difficulty,
+        tags: tags.length ? tags : undefined,
+        remindAt:
+          (type === "daily" || type === "todo") && form.remindAt
+            ? form.remindAt
+            : undefined,
       };
       if (type === "habit") {
         Object.assign(patch, { positive: form.positive, negative: form.negative });
@@ -138,6 +152,11 @@ export function AddEditSheet() {
         dueDate: form.dueDate || undefined,
         cost: Number(form.cost) || 0,
         checklist,
+        tags: tags.length ? tags : undefined,
+        remindAt:
+          (type === "daily" || type === "todo") && form.remindAt
+            ? form.remindAt
+            : undefined,
       });
     }
     close();
@@ -257,6 +276,40 @@ export function AddEditSheet() {
               />
             </div>
           )}
+
+          {type === "daily" && (
+            <div className="field">
+              <label className="field__label">Reminder time (optional)</label>
+              <input
+                className="input"
+                type="time"
+                value={form.remindAt}
+                onChange={(e) => set("remindAt", e.target.value)}
+              />
+            </div>
+          )}
+
+          {type === "todo" && (
+            <div className="field">
+              <label className="field__label">Reminder (optional)</label>
+              <input
+                className="input"
+                type="datetime-local"
+                value={form.remindAt}
+                onChange={(e) => set("remindAt", e.target.value)}
+              />
+            </div>
+          )}
+
+          <div className="field">
+            <label className="field__label">Tags (comma separated, optional)</label>
+            <input
+              className="input"
+              value={form.tagsText}
+              placeholder="health, work"
+              onChange={(e) => set("tagsText", e.target.value)}
+            />
+          </div>
 
           {type === "reward" && (
             <div className="field">
