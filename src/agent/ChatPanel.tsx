@@ -4,7 +4,7 @@ import { AssetImage } from "../components/AssetImage";
 import { Markdown } from "../components/Markdown";
 import { runAgentTurn, toApiHistory, type ChatMessage } from "./mistral";
 import { nextId, useChat, type VisibleMessage } from "./chatStore";
-import { ChatBackground } from "./ChatBackground";
+import { FaceAvatar } from "./FaceAvatar";
 import { extractEmotion, type Emotion } from "./emotions";
 
 const TOOL_VERB: Record<string, string> = {
@@ -61,8 +61,8 @@ export function ChatPanel() {
 
   if (!open) return null;
 
-  // She "thinks" while composing a reply.
-  const bgEmotion: Emotion = busy ? "thinking" : latestEmotion;
+  // Her profile picture "thinks" while she's composing a reply.
+  const faceEmotion: Emotion = busy ? "thinking" : latestEmotion;
 
   const send = async (raw: string) => {
     const content = raw.trim();
@@ -109,12 +109,11 @@ export function ChatPanel() {
     <>
       <div className="scrim" onClick={() => setOpen(false)} />
       <div className="sheet chat">
-        <ChatBackground emotion={bgEmotion} />
         <div className="sheet__grip" />
         <div className="sheet__head">
           <span className="chat__headline">
             <span className="chat__headicon">
-              <AssetImage slot="agentIcon" />
+              <FaceAvatar emotion={faceEmotion} />
             </span>
             <span className="sheet__title">Leela</span>
           </span>

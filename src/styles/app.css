@@ -997,84 +997,12 @@ select {
 
 /* ---------- chat ---------- */
 
-.chat { height: 76vh; position: relative; }
-
-/* keep all chat content above the emotion background layer */
-.chat > .sheet__grip,
-.chat > .sheet__head,
-.chat__body,
-.chat__quick,
-.chat__compose {
-  position: relative;
-  z-index: 1;
-}
-
-/* ambient emotion art behind the conversation */
-.chat__bg {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  overflow: hidden;
-  border-radius: inherit;
-  pointer-events: none;
-}
-.chat__bg-img {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: center top;
-  opacity: 0.9;
-}
-.chat__bg-scrim {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    180deg,
-    rgba(3, 9, 14, 0.4) 0%,
-    rgba(3, 9, 14, 0.72) 52%,
-    rgba(3, 9, 14, 0.93) 100%
-  );
-}
-.chat__bg-noise {
-  position: absolute;
-  inset: 0;
-  opacity: 0;
-  background: repeating-linear-gradient(
-    0deg,
-    rgba(56, 230, 255, 0.14) 0 1px,
-    transparent 1px 3px
-  );
-  mix-blend-mode: screen;
-}
-.chat__bg--glitch .chat__bg-img {
-  animation: bg-glitch 0.42s steps(1, end);
-  will-change: transform, clip-path, filter;
-}
-.chat__bg--glitch .chat__bg-noise {
-  animation: bg-noise 0.42s steps(1, end);
-}
-@keyframes bg-glitch {
-  0% { transform: translate3d(0, 0, 0); filter: none; clip-path: inset(0 0 0 0); }
-  12% { transform: translate3d(-7px, 0, 0); filter: hue-rotate(35deg) contrast(1.35) saturate(1.4); clip-path: inset(6% 0 62% 0); }
-  26% { transform: translate3d(8px, 0, 0); filter: hue-rotate(-25deg) contrast(1.2); clip-path: inset(58% 0 16% 0); }
-  40% { transform: translate3d(-5px, 0, 0); filter: none; clip-path: inset(28% 0 44% 0); }
-  55% { transform: translate3d(4px, 0, 0); filter: hue-rotate(15deg) saturate(1.5); clip-path: inset(72% 0 8% 0); }
-  70% { transform: translate3d(-2px, 0, 0); filter: none; clip-path: inset(14% 0 70% 0); }
-  100% { transform: translate3d(0, 0, 0); filter: none; clip-path: inset(0 0 0 0); }
-}
-@keyframes bg-noise {
-  0%, 100% { opacity: 0; }
-  20% { opacity: 0.55; }
-  45% { opacity: 0.2; }
-  65% { opacity: 0.5; }
-}
+.chat { height: 76vh; }
 
 .chat__headline { display: flex; align-items: center; gap: 10px; }
 .chat__headicon {
-  width: 30px;
-  height: 30px;
+  width: 34px;
+  height: 34px;
   border-radius: 50%;
   overflow: hidden;
   border: 1px solid var(--neon-wire);
@@ -1082,6 +1010,35 @@ select {
   flex-shrink: 0;
   display: grid;
   place-items: center;
+}
+
+/* Leela's mood-reactive profile picture (lives in a fixed round frame) */
+.face-av {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+.face-av img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  /* bias the crop slightly upward so the face shows for both headshots and
+     taller portraits (tune if your art frames the face differently) */
+  object-position: center 25%;
+}
+.face-av--glitch img {
+  animation: face-glitch 0.36s steps(1, end);
+  will-change: transform, clip-path, filter;
+}
+@keyframes face-glitch {
+  0% { transform: translate3d(0, 0, 0); filter: none; clip-path: inset(0 0 0 0); }
+  15% { transform: translate3d(-2px, 0, 0); filter: hue-rotate(35deg) saturate(1.4); clip-path: inset(8% 0 55% 0); }
+  35% { transform: translate3d(2px, 0, 0); filter: hue-rotate(-25deg); clip-path: inset(50% 0 20% 0); }
+  55% { transform: translate3d(-1px, 0, 0); filter: none; clip-path: inset(25% 0 40% 0); }
+  75% { transform: translate3d(1px, 0, 0); filter: hue-rotate(15deg); clip-path: inset(65% 0 10% 0); }
+  100% { transform: translate3d(0, 0, 0); filter: none; clip-path: inset(0 0 0 0); }
 }
 .chat__headicon img { width: 100%; height: 100%; object-fit: cover; }
 .chat__body {
@@ -1100,13 +1057,10 @@ select {
   max-width: 92%;
   padding: 12px 14px;
   color: var(--text);
-  /* frosted glass card so the greeting reads over Leela's art */
-  background: linear-gradient(180deg, rgba(8, 18, 26, 0.62), rgba(3, 9, 14, 0.74));
+  background: linear-gradient(180deg, rgba(10, 24, 34, 0.78), rgba(5, 14, 20, 0.84));
   border: 1px solid rgba(56, 230, 255, 0.22);
   border-radius: 14px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-  -webkit-backdrop-filter: blur(8px) saturate(1.1);
-  backdrop-filter: blur(8px) saturate(1.1);
 }
 .chat__portrait {
   width: 54px;
@@ -1137,15 +1091,13 @@ select {
 }
 .msg--agent {
   align-self: flex-start;
-  background: linear-gradient(180deg, rgba(10, 24, 34, 0.82), rgba(5, 14, 20, 0.88));
+  background: linear-gradient(180deg, rgba(10, 24, 34, 0.9), rgba(5, 14, 20, 0.94));
   color: var(--text);
   border-bottom-left-radius: 5px;
   border: 1px solid rgba(56, 230, 255, 0.3);
   box-shadow:
     inset 0 0 12px rgba(56, 230, 255, 0.06),
     0 6px 18px rgba(0, 0, 0, 0.45);
-  -webkit-backdrop-filter: blur(7px) saturate(1.1);
-  backdrop-filter: blur(7px) saturate(1.1);
 }
 .msg--error {
   align-self: center;

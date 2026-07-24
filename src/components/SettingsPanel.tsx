@@ -6,6 +6,7 @@ import {
   exportSaveDownload,
   importSaveUpload,
   loadSaveFile,
+  reconnectSaveFile,
 } from "../save/persistence";
 import {
   permissionStatus,
@@ -340,15 +341,36 @@ export function SettingsPanel() {
                 ? `Linked to: ${fileName} - ${
                     saveStatus === "saving"
                       ? "saving..."
-                      : saveStatus === "error"
-                        ? "last save failed (permission?)"
-                        : "auto-saving"
+                      : saveStatus === "needs-permission"
+                        ? "needs reconnect (tap below)"
+                        : saveStatus === "error"
+                          ? "last save failed (permission?)"
+                          : "auto-saving"
                   }`
                 : "No save file linked. Progress is kept in this browser. Link a file to sync it across devices via your own cloud folder."}
             </div>
 
+            {fileName && saveStatus === "needs-permission" && (
+              <div
+                className="hint"
+                style={{ marginTop: 0, marginBottom: 8, color: "var(--neon-soft)" }}
+              >
+                Tap Reconnect once to grant access. If this app is installed to
+                your home screen, Android remembers it and won't ask again.
+                Progress is safe in this browser meanwhile.
+              </div>
+            )}
+
             {fileSupported ? (
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {fileName && saveStatus === "needs-permission" && (
+                  <button
+                    className="btn btn--primary"
+                    onClick={guard(reconnectSaveFile)}
+                  >
+                    Reconnect save file
+                  </button>
+                )}
                 <div className="row">
                   <button className="btn" onClick={guard(createNewSaveFile)}>
                     New save file

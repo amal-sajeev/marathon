@@ -86,6 +86,23 @@ export async function forgetStoredHandle(): Promise<void> {
   await idbDel(HANDLE_KEY);
 }
 
+/**
+ * Silent check - never prompts. Use this on boot and before background writes
+ * so we don't trigger a permission dialog outside a user gesture (which Android
+ * shows on every launch and won't persist).
+ */
+export async function hasPermission(
+  handle: FSFileHandle,
+  mode: "read" | "readwrite" = "readwrite",
+): Promise<boolean> {
+  if (!handle.queryPermission) return true;
+  return (await handle.queryPermission({ mode })) === "granted";
+}
+
+/**
+ * Check, then prompt if needed. MUST be called from a user gesture (a tap) so
+ * that an installed PWA persists the grant across launches.
+ */
 export async function ensurePermission(
   handle: FSFileHandle,
   mode: "read" | "readwrite" = "readwrite",

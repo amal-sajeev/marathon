@@ -103,7 +103,7 @@ interface StoreState extends UIState {
   settings: Settings;
   fileName: string | null;
   fileSupported: boolean;
-  saveStatus: "idle" | "saving" | "saved" | "error";
+  saveStatus: "idle" | "saving" | "saved" | "error" | "needs-permission";
 
   // lifecycle
   hydrate: (state: GameState, settings: Settings) => void;

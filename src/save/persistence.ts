@@ -8,6 +8,7 @@ import {
   ensurePermission,
   forgetStoredHandle,
   getStoredHandle,
+  hasPermission,
   pickExistingSaveFile,
   pickNewSaveFile,
   readHandle,
@@ -60,6 +61,7 @@ let lastSerialized = "";
 
 async function writeToDisk(state: GameState): Promise<void> {
   const store = useStore.getState();
+  // Always keep the in-browser backup safe first.
   await idbSet(STATE_BACKUP_KEY, state);
 
   const handle = await getStoredHandle();
@@ -67,13 +69,15 @@ async function writeToDisk(state: GameState): Promise<void> {
     store.setSaveStatus("saved");
     return;
   }
+  // Never prompt during a background autosave - that would pop a dialog with no
+  // user gesture. If access isn't currently granted, keep the backup and flag
+  // that the file needs a one-tap reconnect.
+  if (!(await hasPermission(handle, "readwrite"))) {
+    store.setSaveStatus("needs-permission");
+    return;
+  }
   try {
     store.setSaveStatus("saving");
-    const ok = await ensurePermission(handle, "readwrite");
-    if (!ok) {
-      store.setSaveStatus("error");
-      return;
-    }
     await writeHandle(handle, encodeSave(state));
     store.setSaveStatus("saved");
   } catch {
@@ -99,18 +103,24 @@ export async function initPersistence(): Promise<void> {
 
   let loadedState: GameState | null = null;
 
-  // 1) Prefer a previously chosen save file.
+  // 1) Prefer a previously chosen save file - but only read it if access is
+  //    already granted. We never prompt on boot (no user gesture): for an
+  //    installed PWA the grant persists, so this is silent on later launches;
+  //    otherwise we fall back to the local backup and offer a one-tap reconnect.
   const handle = await getStoredHandle();
   if (handle) {
+    store.setFileName(handle.name);
     try {
-      const granted = await ensurePermission(handle, "readwrite");
-      if (granted) {
+      if (await hasPermission(handle, "readwrite")) {
         const raw = await readHandle(handle);
         loadedState = decodeSave(raw).state;
-        store.setFileName(handle.name);
+        store.setSaveStatus("saved");
+      } else {
+        store.setSaveStatus("needs-permission");
       }
     } catch {
       // fall through to backup
+      store.setSaveStatus("needs-permission");
     }
   }
 
@@ -147,6 +157,18 @@ export async function initPersistence(): Promise<void> {
     }
   });
 
+  // If a file is linked but access isn't granted this launch, grant it on the
+  // user's very next tap. Because that's a real gesture, an installed PWA will
+  // persist the grant and stop asking on future launches.
+  if (handle && useStore.getState().saveStatus === "needs-permission") {
+    const onGesture = () => {
+      if (useStore.getState().saveStatus === "needs-permission") {
+        void reconnectSaveFile();
+      }
+    };
+    window.addEventListener("pointerdown", onGesture, { once: true });
+  }
+
   // Wire proactive check-in notifications (best-effort, no backend).
   initNotifications();
 }
@@ -173,6 +195,32 @@ export async function loadSaveFile(): Promise<void> {
   store.setFileName(handle.name);
   lastSerialized = JSON.stringify(state);
   store.pushToast(`Loaded ${handle.name}`, "info");
+}
+
+/**
+ * Re-grant access to the linked save file. Must run from a user gesture (a tap).
+ * On an installed PWA the grant then persists across launches, so this should
+ * only ever be needed once. Resumes autosave with the current in-memory state.
+ */
+export async function reconnectSaveFile(): Promise<void> {
+  const store = useStore.getState();
+  const handle = await getStoredHandle();
+  if (!handle) return;
+  const ok = await ensurePermission(handle, "readwrite");
+  if (!ok) {
+    store.setSaveStatus("needs-permission");
+    store.pushToast("Permission not granted", "info");
+    return;
+  }
+  try {
+    await writeHandle(handle, encodeSave(store.state));
+    lastSerialized = JSON.stringify(store.state);
+    store.setSaveStatus("saved");
+    store.pushToast("Save file reconnected", "info");
+  } catch {
+    store.setSaveStatus("error");
+    store.pushToast("Could not write to the save file", "loss");
+  }
 }
 
 export async function detachSaveFile(): Promise<void> {

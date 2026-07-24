@@ -5,19 +5,9 @@
 export const EMOTIONS = [
   "neutral",
   "happy",
-  "gentle",
   "excited",
-  "proud",
-  "concerned",
-  "comforting",
   "thinking",
-  "playful",
-  "mischievous",
-  "laughing",
   "surprised",
-  "sleepy",
-  "loving",
-  "shy",
   "sad",
   "focused",
 ] as const;
@@ -46,16 +36,20 @@ export function extractEmotion(content: string): { emotion: Emotion; text: strin
 const base = import.meta.env.BASE_URL;
 const facePath = (name: string) => `${base}assets/faces/${name}`;
 
-/** Leela's constant identity face (orb + chat header). */
-export const ICON_SRC = facePath("icon.webp");
+/** Leela's constant identity face (orb + intro). Reuses the neutral art. */
+export const ICON_SRC = facePath("neutral-1.webp");
 /** Guaranteed-present background used as the universal fallback. */
 export const NEUTRAL_SRC = facePath("neutral-1.webp");
 
 /** How many variants exist per emotion; default 1. Bump when you add more. */
 const VARIANT_COUNTS: Partial<Record<Emotion, number>> = {
   neutral: 2,
-  happy: 2,
+  happy: 1,
   excited: 1,
+  thinking: 2,
+  surprised: 2,
+  sad: 1,
+  focused: 1,
 };
 
 // Sources that 404'd once are remembered so we stop retrying them.
