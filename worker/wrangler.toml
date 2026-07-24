@@ -16,7 +16,9 @@ compatibility_date = "2024-11-01"
 binding = "SUBS"
 id = "7cfe894f46c44d1292704f490024d8ec"
 
-# Run every minute so check-ins fire on the exact minute you set.
+# Run every minute so check-ins fire on the exact minute you set. This is only
+# affordable because the handler reads a single endpoint-index key instead of
+# calling KV list(), which is capped at 1,000 operations per day on the free plan.
 [triggers]
 crons = ["* * * * *"]
 

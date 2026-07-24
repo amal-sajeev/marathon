@@ -103,6 +103,46 @@ async function sendPush(
   }
 }
 
+// --- subscription index ---
+// The cron runs every minute, and KV only allows 1,000 list operations per day
+// on the free plan, so a list() per run would run dry after ~16 hours and take
+// every check-in down with it. Instead we keep the set of endpoints in one key
+// and read that: reads have a 100,000/day budget, which a per-minute poll fits
+// inside comfortably.
+
+const INDEX_KEY = "__endpoints";
+
+async function writeIndex(env: Env, endpoints: string[]): Promise<void> {
+  await env.SUBS.put(INDEX_KEY, JSON.stringify(endpoints));
+}
+
+/** Read the endpoint index, seeding it from a one-off list() if it's absent. */
+async function readIndex(env: Env): Promise<string[]> {
+  const stored = (await env.SUBS.get(INDEX_KEY, "json")) as string[] | null;
+  if (Array.isArray(stored)) return stored;
+  // First run after deploying this change: adopt whatever is already in KV so
+  // existing devices keep working without having to re-register.
+  const listed = await env.SUBS.list();
+  const endpoints = listed.keys
+    .map((k) => k.name)
+    .filter((name) => name !== INDEX_KEY);
+  await writeIndex(env, endpoints);
+  return endpoints;
+}
+
+async function addToIndex(env: Env, endpoint: string): Promise<void> {
+  const endpoints = await readIndex(env);
+  if (endpoints.includes(endpoint)) return;
+  await writeIndex(env, [...endpoints, endpoint]);
+}
+
+async function removeFromIndex(env: Env, endpoint: string): Promise<void> {
+  const endpoints = await readIndex(env);
+  const next = endpoints.filter((e) => e !== endpoint);
+  if (next.length === endpoints.length) return;
+  await writeIndex(env, next);
+}
+
 // --- random slot helpers ---
 
 function hhmmToMinutes(t: string): number {
@@ -176,6 +216,7 @@ export default {
         randomFired: prev?.randomFired,
       };
       await env.SUBS.put(sub.endpoint, JSON.stringify(rec));
+      await addToIndex(env, sub.endpoint);
       return json({ ok: true }, env);
     }
 
@@ -186,7 +227,10 @@ export default {
       } catch {
         return json({ error: "bad json" }, env, 400);
       }
-      if (payload.endpoint) await env.SUBS.delete(payload.endpoint);
+      if (payload.endpoint) {
+        await env.SUBS.delete(payload.endpoint);
+        await removeFromIndex(env, payload.endpoint);
+      }
       return json({ ok: true }, env);
     }
 
@@ -206,6 +250,7 @@ export default {
       });
       if (result === "gone") {
         await env.SUBS.delete(payload.endpoint);
+        await removeFromIndex(env, payload.endpoint);
         return json({ error: "subscription expired" }, env, 410);
       }
       return json({ ok: result === "ok" }, env, result === "ok" ? 200 : 502);
@@ -223,10 +268,16 @@ export default {
     ).padStart(2, "0")}`;
     const today = now.toISOString().slice(0, 10);
 
-    const list = await env.SUBS.list();
-    for (const key of list.keys) {
-      const rec = (await env.SUBS.get(key.name, "json")) as SubRecord | null;
-      if (!rec) continue;
+    const endpoints = await readIndex(env);
+    const alive: string[] = [];
+    let indexDirty = false;
+
+    for (const endpoint of endpoints) {
+      const rec = (await env.SUBS.get(endpoint, "json")) as SubRecord | null;
+      if (!rec) {
+        indexDirty = true; // record vanished; drop the stale index entry
+        continue;
+      }
       let dirty = false;
       let removed = false;
 
@@ -238,7 +289,7 @@ export default {
       ) {
         const result = await sendPush(env, rec.subscription, { type: "checkin" });
         if (result === "gone") {
-          await env.SUBS.delete(key.name);
+          await env.SUBS.delete(endpoint);
           removed = true;
         } else {
           rec.lastFired = { ...(rec.lastFired ?? {}), [cur]: today };
@@ -263,7 +314,7 @@ export default {
             type: "spontaneous",
           });
           if (result === "gone") {
-            await env.SUBS.delete(key.name);
+            await env.SUBS.delete(endpoint);
             removed = true;
           } else {
             rec.randomFired = { ...(rec.randomFired ?? {}), [cur]: true };
@@ -272,7 +323,14 @@ export default {
         }
       }
 
-      if (dirty && !removed) await env.SUBS.put(key.name, JSON.stringify(rec));
+      if (removed) {
+        indexDirty = true;
+        continue;
+      }
+      if (dirty) await env.SUBS.put(endpoint, JSON.stringify(rec));
+      alive.push(endpoint);
     }
+
+    if (indexDirty) await writeIndex(env, alive);
   },
 };
