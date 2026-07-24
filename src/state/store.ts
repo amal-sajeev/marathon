@@ -11,16 +11,19 @@ import type {
   Followup,
   GameState,
   Habit,
+  Keepsake,
   Memory,
   MoodEntry,
   Reward,
   Settings,
+  Signature,
   Stats,
   Task,
   TaskType,
   Todo,
 } from "./types";
 import { CONSUMABLES, cosmeticById } from "../game/cosmetics";
+import { BOND_STAGES } from "../game/bond";
 
 export function uid(): string {
   return (
@@ -60,6 +63,10 @@ export function freshBond(): Bond {
   return { firstMet: nowIso(), interactions: 0, lastStageIndex: 0 };
 }
 
+export function freshSignature(): Signature {
+  return { nicknames: {}, bits: [] };
+}
+
 export function freshCosmetics(): Cosmetics {
   return { accent: "", orbSkin: "", badgeFrame: "", owned: [] };
 }
@@ -76,6 +83,8 @@ export function freshState(name?: string): GameState {
     cosmetics: freshCosmetics(),
     followups: [],
     engagement: { loginStreak: 0 },
+    signature: freshSignature(),
+    keepsakes: [],
     createdAt: nowIso(),
     lastCron: todayStr(),
     updatedAt: nowIso(),
@@ -101,6 +110,7 @@ export function normalizeState(state: GameState): GameState {
       firstMet: state.bond?.firstMet ?? state.createdAt ?? nowIso(),
       interactions: state.bond?.interactions ?? 0,
       lastStageIndex: state.bond?.lastStageIndex ?? 0,
+      lastTalkedAt: state.bond?.lastTalkedAt,
     },
     moods: Array.isArray(state.moods) ? state.moods : [],
     history: Array.isArray(state.history) ? state.history : [],
@@ -110,7 +120,16 @@ export function normalizeState(state: GameState): GameState {
       loginStreak: state.engagement?.loginStreak ?? 0,
       lastGiftDate: state.engagement?.lastGiftDate,
       lastLoginDate: state.engagement?.lastLoginDate,
+      lastDebriefDate: state.engagement?.lastDebriefDate,
+      lastSundayLetter: state.engagement?.lastSundayLetter,
     },
+    signature: {
+      ...freshSignature(),
+      ...(state.signature ?? {}),
+      nicknames: state.signature?.nicknames ?? {},
+      bits: Array.isArray(state.signature?.bits) ? state.signature.bits : [],
+    },
+    keepsakes: Array.isArray(state.keepsakes) ? state.keepsakes : [],
     updatedAt: state.updatedAt ?? nowIso(),
   };
 }
@@ -206,6 +225,16 @@ interface StoreState extends UIState {
   claimDailyGift: () => { text: string } | null;
   addFollowup: (text: string, dueDate?: string) => Followup | null;
   completeFollowup: (id: string) => void;
+  markDebriefDone: () => void;
+  markSundayLetter: (date: string) => void;
+
+  // signature + keepsakes (texture alongside the bond)
+  setCodeword: (word: string | null) => void;
+  setEnergyWord: (word: string | null) => void;
+  setTaskNickname: (taskId: string, nickname: string | null) => void;
+  addBit: (text: string) => void;
+  removeBit: (text: string) => void;
+  addKeepsake: (title: string, text: string, kind?: Keepsake["kind"]) => Keepsake | null;
 
   // cron
   runCronNow: () => void;
@@ -335,6 +364,7 @@ const defaultSettings: Settings = {
   spontaneousCount: 2,
   spontaneousStart: "10:00",
   spontaneousEnd: "21:00",
+  nightlyDebrief: true,
 };
 
 export const useStore = create<StoreState>((set, get) => ({
@@ -853,6 +883,109 @@ export const useStore = create<StoreState>((set, get) => ({
       },
     })),
 
+  markDebriefDone: () =>
+    set((s) => ({
+      state: {
+        ...s.state,
+        engagement: { ...s.state.engagement, lastDebriefDate: todayStr() },
+      },
+    })),
+
+  markSundayLetter: (date) =>
+    set((s) => ({
+      state: {
+        ...s.state,
+        engagement: { ...s.state.engagement, lastSundayLetter: date },
+      },
+    })),
+
+  setCodeword: (word) =>
+    set((s) => ({
+      state: {
+        ...s.state,
+        signature: {
+          ...s.state.signature,
+          codeword: word?.trim() || undefined,
+        },
+      },
+    })),
+
+  setEnergyWord: (word) =>
+    set((s) => ({
+      state: {
+        ...s.state,
+        signature: {
+          ...s.state.signature,
+          energyWord: word?.trim() || undefined,
+        },
+      },
+    })),
+
+  setTaskNickname: (taskId, nickname) =>
+    set((s) => {
+      const nicknames = { ...s.state.signature.nicknames };
+      const clean = nickname?.trim();
+      if (!clean) delete nicknames[taskId];
+      else nicknames[taskId] = clean;
+      return {
+        state: {
+          ...s.state,
+          signature: { ...s.state.signature, nicknames },
+        },
+      };
+    }),
+
+  addBit: (text) => {
+    const clean = text.trim();
+    if (!clean) return;
+    set((s) => {
+      const bits = s.state.signature.bits;
+      if (bits.some((b) => b.toLowerCase() === clean.toLowerCase())) return {};
+      return {
+        state: {
+          ...s.state,
+          signature: {
+            ...s.state.signature,
+            bits: [...bits, clean].slice(-30),
+          },
+        },
+      };
+    });
+  },
+
+  removeBit: (text) =>
+    set((s) => ({
+      state: {
+        ...s.state,
+        signature: {
+          ...s.state.signature,
+          bits: s.state.signature.bits.filter(
+            (b) => b.toLowerCase() !== text.trim().toLowerCase(),
+          ),
+        },
+      },
+    })),
+
+  addKeepsake: (title, text, kind = "other") => {
+    const t = title.trim();
+    const body = text.trim();
+    if (!t || !body) return null;
+    const keepsake: Keepsake = {
+      id: uid(),
+      kind,
+      title: t,
+      text: body,
+      createdAt: nowIso(),
+    };
+    set((s) => ({
+      state: {
+        ...s.state,
+        keepsakes: [keepsake, ...s.state.keepsakes].slice(0, 40),
+      },
+    }));
+    return keepsake;
+  },
+
   runCronNow: () => {
     const s = get();
     const { state, summary } = runCron(s.state);
@@ -910,11 +1043,34 @@ export const useStore = create<StoreState>((set, get) => ({
     }
   },
 
-  markBondStage: (index) =>
-    set((s) => ({
-      bondMilestone: index,
-      state: { ...s.state, bond: { ...s.state.bond, lastStageIndex: index } },
-    })),
+  markBondStage: (index) => {
+    const stage = BOND_STAGES[index];
+    set((s) => {
+      const keepsakes = [...s.state.keepsakes];
+      if (stage?.letter) {
+        const already = keepsakes.some(
+          (k) => k.kind === "letter" && k.title === stage.name,
+        );
+        if (!already) {
+          keepsakes.unshift({
+            id: uid(),
+            kind: "letter",
+            title: stage.name,
+            text: stage.letter,
+            createdAt: nowIso(),
+          });
+        }
+      }
+      return {
+        bondMilestone: index,
+        state: {
+          ...s.state,
+          bond: { ...s.state.bond, lastStageIndex: index },
+          keepsakes: keepsakes.slice(0, 40),
+        },
+      };
+    });
+  },
 
   renameCharacter: (name) =>
     set((s) => ({
@@ -972,6 +1128,7 @@ export const useStore = create<StoreState>((set, get) => ({
         bond: {
           ...s.state.bond,
           interactions: s.state.bond.interactions + 1,
+          lastTalkedAt: nowIso(),
         },
       },
     })),

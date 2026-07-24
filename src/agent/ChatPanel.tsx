@@ -6,6 +6,7 @@ import { runAgentTurn, toApiHistory, type ChatMessage } from "./mistral";
 import { nextId, useChat, type VisibleMessage } from "./chatStore";
 import { FaceAvatar } from "./FaceAvatar";
 import { RankBadge } from "../components/RankBadge";
+import { runNightlyDebrief } from "./checkin";
 import { extractEmotion, type Emotion } from "./emotions";
 
 const TOOL_VERB: Record<string, string> = {
@@ -32,6 +33,13 @@ const TOOL_VERB: Record<string, string> = {
   schedule_followup: "made a note to follow up",
   list_followups: "checked her follow-ups",
   complete_followup: "closed a follow-up",
+  set_codeword: "set a codeword",
+  set_energy_word: "set an energy word",
+  set_task_nickname: "named a quest",
+  add_bit: "saved a shared bit",
+  list_signature: "checked your shared bits",
+  add_keepsake: "left a keepsake",
+  write_sunday_letter: "wrote a Sunday letter",
 };
 
 const QUICK_PROMPTS = [
@@ -67,6 +75,15 @@ export function ChatPanel() {
   const setSettingsOpen = useStore((s) => s.setSettingsOpen);
   const setMoodOpen = useStore((s) => s.setMoodOpen);
   const settings = useStore((s) => s.settings);
+  const lastDebrief = useStore((s) => s.state.engagement.lastDebriefDate);
+  const today = new Date();
+  const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  const evening = today.getHours() >= 20;
+  const canDebrief =
+    !!settings.nightlyDebrief &&
+    evening &&
+    lastDebrief !== todayKey &&
+    !!settings.apiKey;
 
   const messages = useChat((s) => s.messages);
   const busy = useChat((s) => s.busy);
@@ -188,6 +205,16 @@ export function ChatPanel() {
             <span className="sheet__title">Leela</span>
           </span>
           <div style={{ display: "flex", gap: 6 }}>
+            {canDebrief && (
+              <button
+                className="icon-btn"
+                onClick={() => void runNightlyDebrief()}
+                aria-label="Nightly debrief"
+                title="Nightly debrief"
+              >
+                {"\u263D"}
+              </button>
+            )}
             <button
               className="icon-btn"
               onClick={() => setMoodOpen(true)}
@@ -275,7 +302,7 @@ export function ChatPanel() {
                   <FaceAvatar emotion={faceEmotion} />
                 </span>
               </div>
-              <div className="typing">
+              <div className={`typing typing--${faceEmotion}`}>
                 <span />
                 <span />
                 <span />

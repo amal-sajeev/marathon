@@ -37,17 +37,44 @@ function personalContext(): string {
   const { state } = useStore.getState();
   const c = state.character;
   const lines: string[] = [];
+  const now = new Date();
+  const h = now.getHours();
+  const tod =
+    h < 5 ? "late night" : h < 12 ? "morning" : h < 17 ? "afternoon" : h < 21 ? "evening" : "night";
+
   lines.push("WHAT YOU KNOW RIGHT NOW (context for you, not spoken by the user)");
   lines.push(
     `- The person you look after goes by "${c.name}". They are level ${c.level}, HP ${Math.round(
       c.hp,
-    )}/${c.maxHp}, gold ${Math.round(c.gold)}.`,
+    )}/${c.maxHp}, gold ${Math.round(c.gold)}. Local time of day: ${tod}.`,
   );
 
   const stage = bondStage(state.bond);
   lines.push(
-    `- How familiar you are with them: ${stage.name}. ${stage.guidance} This eases up naturally as your days and talks together add up. Never rush it, and take your cue from how they respond.`,
+    `- How familiar you are with them: ${stage.name}. ${stage.guidance} This eases up naturally as your days and talks together add up. Never rush it, and take your cue from how they respond. The bond is the relationship; signature bits and rituals sit beside it, they do not replace it.`,
   );
+
+  if (state.bond.lastTalkedAt) {
+    const quietMs = Date.now() - new Date(state.bond.lastTalkedAt).getTime();
+    const quietDays = Math.floor(quietMs / 86_400_000);
+    if (quietDays >= 2) {
+      lines.push(
+        `- It's been about ${quietDays} day${quietDays === 1 ? "" : "s"} since you last talked. Acknowledge the gap lightly if it fits; don't guilt them.`,
+      );
+    }
+  }
+
+  const sig = state.signature;
+  if (sig?.codeword || sig?.energyWord || (sig?.bits?.length ?? 0) > 0 || Object.keys(sig?.nicknames ?? {}).length) {
+    lines.push("- Shared texture (use sparingly, never as a list):");
+    if (sig.codeword) lines.push(`  - Codeword: "${sig.codeword}"`);
+    if (sig.energyWord) lines.push(`  - Low-energy shorthand: "${sig.energyWord}"`);
+    Object.entries(sig.nicknames ?? {}).forEach(([id, nick]) => {
+      const t = state.tasks.find((x) => x.id === id);
+      if (t) lines.push(`  - Nickname "${nick}" for "${t.title}"`);
+    });
+    (sig.bits ?? []).slice(-6).forEach((b) => lines.push(`  - Bit: ${b}`));
+  }
 
   const lastMood = state.moods?.[state.moods.length - 1];
   if (lastMood) {

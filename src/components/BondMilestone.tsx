@@ -22,6 +22,9 @@ export function BondMilestone() {
         <div className="celebrate__ring">{"\u2665"}</div>
         <div className="celebrate__title">{stage?.name ?? "Closer"}</div>
         <div className="celebrate__sub">You and Leela have grown closer.</div>
+        {stage?.letter && (
+          <div className="celebrate__letter">{stage.letter}</div>
+        )}
       </div>
     </div>
   );

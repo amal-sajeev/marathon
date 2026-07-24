@@ -4,6 +4,7 @@ import type { Daily, DayRecord, Habit, Todo } from "../state/types";
 import { runAgentTurn, type ChatMessage } from "./mistral";
 import { nextId, useChat } from "./chatStore";
 import { extractEmotion } from "./emotions";
+import { softPredictions } from "./predictions";
 
 const CHECKIN_DIRECTIVE = `[AUTOMATED CHECK-IN]
 This is a scheduled check-in you initiated, not a reply to the user. Open a short, natural conversation to help them stay on track. Stay fully in character.
@@ -13,12 +14,45 @@ Cover these, spread across 3 to 5 SHORT, separate messages (do not cram it into 
 2. Ask what they got done or finished since you last spoke.
 3. Ask how their habits are holding up.
 4. Ask which of today's active dailies and open to-dos they actually did, and which slipped.
+5. If a soft prediction is listed below, raise at most ONE as a proposal (ask first, change only if they agree). Skip if nothing fits.
 
 Rules:
 - Separate each message with a line containing only three dashes: ---
 - Keep each message to a sentence or two. Conversational, not a checklist dump.
 - Do not mark anything done or add anything yet - just ask. When the user replies, use your tools (complete_daily, complete_todo, score_habit, add_*) to record what they tell you.
-- Use the state snapshot below to be specific (reference real titles), but do not paste it back verbatim.`;
+- Use the state snapshot below to be specific (reference real titles or nicknames), but do not paste it back verbatim.
+- If you share a codeword or in-joke, use it lightly once at most.`;
+
+function timeOfDayLabel(now: Date): string {
+  const h = now.getHours();
+  if (h < 5) return "late night";
+  if (h < 12) return "morning";
+  if (h < 17) return "afternoon";
+  if (h < 21) return "evening";
+  return "night";
+}
+
+function buildSignatureLines(): string[] {
+  const sig = useStore.getState().state.signature;
+  if (!sig) return [];
+  const lines: string[] = [];
+  if (sig.codeword) lines.push(`  - Shared codeword: "${sig.codeword}" (use sparingly, never explain it).`);
+  if (sig.energyWord)
+    lines.push(`  - Low-energy shorthand: "${sig.energyWord}" (if they use it or seem drained, match it).`);
+  const nicks = Object.entries(sig.nicknames ?? {});
+  if (nicks.length) {
+    lines.push("  - Quest nicknames:");
+    nicks.forEach(([id, nick]) => {
+      const t = useStore.getState().state.tasks.find((x) => x.id === id);
+      if (t) lines.push(`      "${nick}" = ${t.title} [${id}]`);
+    });
+  }
+  if (sig.bits?.length) {
+    lines.push("  - Signature bits (weave in at most one if it fits):");
+    sig.bits.slice(-8).forEach((b) => lines.push(`      - ${b}`));
+  }
+  return lines;
+}
 
 function buildContext(): string {
   const state = useStore.getState().state;
@@ -30,40 +64,39 @@ function buildContext(): string {
   const todos = state.tasks.filter((t) => t.type === "todo") as Todo[];
   const habits = state.tasks.filter((t) => t.type === "habit") as Habit[];
   const today = todayStr(now);
+  const nicknames = state.signature?.nicknames ?? {};
 
   const lines: string[] = [];
-  lines.push(`STATE SNAPSHOT (today ${today})`);
+  lines.push(`STATE SNAPSHOT (today ${today}, ${timeOfDayLabel(now)})`);
   lines.push(`Adventurer: ${c.name}, level ${c.level}, HP ${Math.round(c.hp)}/${c.maxHp}, gold ${Math.round(c.gold)}.`);
 
   lines.push("Today's dailies:");
   if (activeDailies.length === 0) lines.push("  (none active today)");
-  activeDailies.forEach((d) =>
-    lines.push(`  - [${d.id}] ${d.title} - ${d.done ? "done" : "not done"}`),
-  );
+  activeDailies.forEach((d) => {
+    const nick = nicknames[d.id] ? ` a.k.a. "${nicknames[d.id]}"` : "";
+    lines.push(`  - [${d.id}] ${d.title}${nick} - ${d.done ? "done" : "not done"}`);
+  });
 
   lines.push("Open to-dos:");
   const openTodos = todos.filter((t) => !t.done);
   if (openTodos.length === 0) lines.push("  (none)");
   openTodos.forEach((t) => {
     const overdue = t.dueDate && t.dueDate < today ? " (overdue)" : t.dueDate ? ` (due ${t.dueDate})` : "";
-    lines.push(`  - [${t.id}] ${t.title}${overdue}`);
+    const nick = nicknames[t.id] ? ` a.k.a. "${nicknames[t.id]}"` : "";
+    lines.push(`  - [${t.id}] ${t.title}${nick}${overdue}`);
   });
 
   lines.push("Habits:");
   if (habits.length === 0) lines.push("  (none)");
-  habits.forEach((h) => lines.push(`  - [${h.id}] ${h.title}`));
+  habits.forEach((h) => {
+    const nick = nicknames[h.id] ? ` a.k.a. "${nicknames[h.id]}"` : "";
+    lines.push(`  - [${h.id}] ${h.title}${nick}`);
+  });
 
-  // Pattern nudges: things quietly worth raising (without nagging).
-  const slipping = activeDailies.filter((d) => d.streak === 0);
-  const badHabits = habits.filter((h) => h.countDown > h.countUp && h.countDown >= 2);
-  if (slipping.length || badHabits.length) {
-    lines.push("Patterns worth a gentle nudge (raise at most one, kindly):");
-    slipping.forEach((d) =>
-      lines.push(`  - "${d.title}" has lost its streak; maybe offer to ease its schedule.`),
-    );
-    badHabits.forEach((h) =>
-      lines.push(`  - "${h.title}" is trending the wrong way (+${h.countUp}/-${h.countDown}).`),
-    );
+  const preds = softPredictions(state, now);
+  if (preds.length) {
+    lines.push("Soft predictions (raise at most one, as a proposal they can refuse):");
+    preds.forEach((p) => lines.push(`  - ${p.note}`));
   }
 
   const lastMood = state.moods[state.moods.length - 1];
@@ -74,7 +107,6 @@ function buildContext(): string {
     );
   }
 
-  // Things you meant to circle back on.
   const dueFollowups = (state.followups ?? []).filter(
     (f) => !f.done && (!f.dueDate || f.dueDate <= today),
   );
@@ -83,11 +115,16 @@ function buildContext(): string {
     dueFollowups.forEach((f) => lines.push(`  - [${f.id}] ${f.text}`));
   }
 
-  // The daily gift, if one is waiting for them.
   if (state.engagement?.lastGiftDate !== today) {
     lines.push(
       "You have today's small gift to give them (call claim_daily_gift): offer it warmly, once, near the start.",
     );
+  }
+
+  const sigLines = buildSignatureLines();
+  if (sigLines.length) {
+    lines.push("Your shared texture with them:");
+    lines.push(...sigLines);
   }
 
   return lines.join("\n");
@@ -163,11 +200,26 @@ Cover these across 3 to 4 SHORT, separate messages:
 1. Name one real thing that went well this week, specific to their data.
 2. Gently flag one pattern worth attention (a habit slipping, dailies often missed), without lecturing.
 3. Ask what they want next week to look like, and offer to set up a quest or two toward it.
+4. Before you finish, write this week's Sunday letter with write_sunday_letter (a few personal sentences, not a report). Do this once.
 
 Rules:
 - Separate each message with a line containing only three dashes: ---
 - Keep each message to a sentence or two. Reflective and encouraging, never a report.
-- Do not add or change anything yet. When they reply, use your tools.`;
+- Do not add or change anything yet (except the Sunday letter tool). When they reply, use your tools.`;
+
+const DEBRIEF_DIRECTIVE = `[NIGHTLY DEBRIEF]
+This is a short evening ritual you initiated, not a reply to the user. Keep it intimate and brief. Stay fully in character and within your current closeness stage.
+
+Across 2 to 3 SHORT messages:
+1. Ask how the day actually felt, not for a task dump.
+2. Ask if anything is still nagging them tonight, and offer to park it on the board or set a follow-up.
+3. Close with one grounded line. If your bond stage allows, let a little warmth through. Never rush romance.
+
+Rules:
+- Separate each message with a line containing only three dashes: ---
+- Keep each message to a sentence or two.
+- If a soft prediction fits, raise it once as an offer.
+- Use nicknames / codeword only if they already exist and it feels natural.`;
 
 /** Days elapsed since a yyyy-mm-dd date string. */
 function daysAgo(date: string): number {
@@ -200,6 +252,13 @@ function buildWeeklyContext(): string {
   if (wobbly.length) {
     lines.push("Dailies with no current streak: " + wobbly.map((d) => d.title).join(", ") + ".");
   }
+  const eng = state.engagement;
+  if (eng?.lastSundayLetter) {
+    lines.push(`Last Sunday letter: ${eng.lastSundayLetter}.`);
+  } else {
+    lines.push("No Sunday letter on file yet.");
+  }
+  softPredictions(state).forEach((p) => lines.push(`Soft prediction: ${p.note}`));
   return lines.join("\n");
 }
 
@@ -293,6 +352,62 @@ export async function runCheckIn(): Promise<void> {
     const parts = splitMessages(result.content || "");
     const messages = parts.length ? parts : ["I'm here. How did today go?"];
 
+    for (let i = 0; i < messages.length; i++) {
+      if (i > 0) {
+        chat.setBusy(true);
+        await delay(700);
+      }
+      const { emotion, text, chips } = extractEmotion(messages[i]);
+      useChat.getState().add({
+        id: nextId(),
+        role: "assistant",
+        content: text,
+        toolEvents: i === 0 ? result.toolEvents : undefined,
+        emotion,
+        chips: i === messages.length - 1 ? chips : undefined,
+      });
+    }
+  } catch (err) {
+    useChat.getState().add({
+      id: nextId(),
+      role: "error",
+      content: err instanceof Error ? err.message : String(err),
+    });
+  } finally {
+    useChat.getState().setBusy(false);
+  }
+}
+
+/**
+ * Short evening ritual. Marks the day as debriefed so it doesn't spam.
+ */
+export async function runNightlyDebrief(): Promise<void> {
+  const store = useStore.getState();
+  const chat = useChat.getState();
+  if (chat.busy) return;
+
+  store.setChatOpen(true);
+  const settings = store.settings;
+
+  if (!settings.apiKey) {
+    chat.add({
+      id: nextId(),
+      role: "assistant",
+      content: "I'd sit with you for a proper wind-down, but we still need a Mistral key in Settings.",
+    });
+    return;
+  }
+
+  store.markDebriefDone();
+  chat.setBusy(true);
+  try {
+    const directive: ChatMessage = {
+      role: "user",
+      content: `${DEBRIEF_DIRECTIVE}\n\n${buildContext()}`,
+    };
+    const result = await runAgentTurn(settings, [directive]);
+    const parts = splitMessages(result.content || "");
+    const messages = parts.length ? parts : ["How did today land?"];
     for (let i = 0; i < messages.length; i++) {
       if (i > 0) {
         chat.setBusy(true);

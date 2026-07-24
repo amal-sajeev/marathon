@@ -4,7 +4,7 @@ import { todayStr } from "../state/cron";
 import { rankForLevel, nextRank } from "../game/ranks";
 import { BOND_STAGES, bondStage, nextBondStage } from "../game/bond";
 import { computeAchievements } from "../game/achievements";
-import { runWeeklyReview } from "../agent/checkin";
+import { runNightlyDebrief, runWeeklyReview } from "../agent/checkin";
 import type { DayRecord, Habit } from "../state/types";
 import { RankBadge } from "./RankBadge";
 
@@ -97,6 +97,8 @@ export function StatsPanel() {
   const bond = useStore((s) => s.state.bond);
   const history = useStore((s) => s.state.history);
   const fullState = useStore((s) => s.state);
+  const signature = useStore((s) => s.state.signature);
+  const keepsakes = useStore((s) => s.state.keepsakes);
 
   if (!open) return null;
 
@@ -251,6 +253,15 @@ export function StatsPanel() {
               className="btn btn--sm"
               onClick={() => {
                 setOpen(false);
+                void runNightlyDebrief();
+              }}
+            >
+              Nightly debrief
+            </button>
+            <button
+              className="btn btn--sm"
+              onClick={() => {
+                setOpen(false);
                 setWardrobeOpen(true);
               }}
             >
@@ -285,10 +296,63 @@ export function StatsPanel() {
             </div>
           )}
 
+          {keepsakes.length > 0 && (
+            <div className="trends">
+              <div className="trends__label">Keepsakes</div>
+              <div className="letters">
+                {keepsakes.slice(0, 12).map((k) => (
+                  <div className="letter" key={k.id}>
+                    <div className="letter__stage">
+                      {k.kind} · {new Date(k.createdAt).toLocaleDateString()}
+                    </div>
+                    <div className="letter__title">{k.title}</div>
+                    <div className="letter__text">{k.text}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {(signature.codeword ||
+            signature.energyWord ||
+            signature.bits.length > 0 ||
+            Object.keys(signature.nicknames).length > 0) && (
+            <div className="trends">
+              <div className="trends__label">Your shared texture</div>
+              <div className="sig-block">
+                {signature.codeword && (
+                  <div className="sig-line">
+                    <span className="sig-k">Codeword</span> {signature.codeword}
+                  </div>
+                )}
+                {signature.energyWord && (
+                  <div className="sig-line">
+                    <span className="sig-k">Low-energy</span> {signature.energyWord}
+                  </div>
+                )}
+                {Object.entries(signature.nicknames).map(([id, nick]) => {
+                  const t = tasks.find((x) => x.id === id);
+                  if (!t) return null;
+                  return (
+                    <div className="sig-line" key={id}>
+                      <span className="sig-k">{nick}</span> → {t.title}
+                    </div>
+                  );
+                })}
+                {signature.bits.map((b) => (
+                  <div className="sig-line sig-line--bit" key={b}>
+                    {b}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="hint" style={{ marginTop: 12 }}>
             A streak grows for every day you clear all your active dailies. Miss
             one and it resets. Let your HP hit zero and you fall - dropping a level
-            and 20% of your gold - so guard it.
+            and 20% of your gold - so guard it. Closeness with Leela still grows
+            on its own clock; shared bits and letters sit beside it.
           </div>
         </div>
       </div>

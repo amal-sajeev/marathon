@@ -121,6 +121,8 @@ export interface Bond {
   interactions: number;
   /** highest bond stage index already celebrated, so milestones fire once */
   lastStageIndex?: number;
+  /** ISO timestamp of the last real conversation (presence, not score). */
+  lastTalkedAt?: string;
 }
 
 /** Cosmetic customization bought with gold. Empty string means the default. */
@@ -175,6 +177,35 @@ export interface Engagement {
   lastLoginDate?: string;
   /** consecutive days opened. */
   loginStreak: number;
+  /** yyyy-mm-dd the nightly debrief last ran. */
+  lastDebriefDate?: string;
+  /** yyyy-mm-dd of the last Sunday letter Leela wrote. */
+  lastSundayLetter?: string;
+}
+
+/**
+ * Private texture unique to this pair: in-jokes, nicknames for quests, a
+ * codeword, a shorthand for low-energy days. Grows alongside the bond without
+ * replacing it.
+ */
+export interface Signature {
+  /** a private word or phrase the two of you share */
+  codeword?: string;
+  /** what they say (or she uses) for a low-energy day */
+  energyWord?: string;
+  /** task id -> nickname Leela uses for that quest */
+  nicknames: Record<string, string>;
+  /** recurring bits / in-jokes (short, from Leela's perspective) */
+  bits: string[];
+}
+
+/** A lasting note or caption Leela leaves in the Service Record. */
+export interface Keepsake {
+  id: string;
+  kind: "milestone" | "letter" | "ritual" | "other";
+  title: string;
+  text: string;
+  createdAt: string;
 }
 
 export interface GameState {
@@ -195,6 +226,10 @@ export interface GameState {
   followups: Followup[];
   /** daily gift + login streak bookkeeping */
   engagement: Engagement;
+  /** private texture: codeword, bits, quest nicknames */
+  signature: Signature;
+  /** notes / captions Leela leaves in the Service Record */
+  keepsakes: Keepsake[];
   /** ISO date (yyyy-mm-dd) that cron last ran */
   lastCron?: string;
   createdAt: string;
@@ -222,6 +257,8 @@ export interface Settings {
   spontaneousStart?: string;
   /** local "HH:MM" window end she'll ping within */
   spontaneousEnd?: string;
+  /** offer / run a short nightly debrief with Leela in the evening */
+  nightlyDebrief?: boolean;
 }
 
 /** The full persisted payload that lives inside the .rpgsave file. */

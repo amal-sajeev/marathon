@@ -312,7 +312,15 @@ export const TOOL_SPECS: ToolSpec[] = [
           text: { type: "string", description: "The detail, as a short note." },
           category: {
             type: "string",
-            enum: ["person", "preference", "goal", "wellbeing", "milestone", "other"],
+            enum: [
+              "person",
+              "preference",
+              "goal",
+              "wellbeing",
+              "milestone",
+              "joke",
+              "other",
+            ],
           },
           importance: {
             type: "integer",
@@ -338,7 +346,15 @@ export const TOOL_SPECS: ToolSpec[] = [
           text: { type: "string" },
           category: {
             type: "string",
-            enum: ["person", "preference", "goal", "wellbeing", "milestone", "other"],
+            enum: [
+              "person",
+              "preference",
+              "goal",
+              "wellbeing",
+              "milestone",
+              "joke",
+              "other",
+            ],
           },
           importance: { type: "integer", minimum: 1, maximum: 3 },
         },
@@ -405,6 +421,106 @@ export const TOOL_SPECS: ToolSpec[] = [
         type: "object",
         properties: { id: { type: "string" } },
         required: ["id"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "set_codeword",
+      description:
+        "Set or clear the private codeword you two share. Pass empty string to clear. Only when they invent or agree to one.",
+      parameters: {
+        type: "object",
+        properties: { word: { type: "string" } },
+        required: ["word"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "set_energy_word",
+      description:
+        "Set or clear the shorthand they use (or you use for them) on a low-energy day. Empty string clears it.",
+      parameters: {
+        type: "object",
+        properties: { word: { type: "string" } },
+        required: ["word"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "set_task_nickname",
+      description:
+        "Give a quest a private nickname you two use, or clear it with an empty nickname. Use list_tasks for the id.",
+      parameters: {
+        type: "object",
+        properties: {
+          id: { type: "string" },
+          nickname: { type: "string" },
+        },
+        required: ["id", "nickname"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "add_bit",
+      description:
+        "Save a recurring in-joke or signature bit unique to the two of you (short, from your perspective). Don't announce it.",
+      parameters: {
+        type: "object",
+        properties: { text: { type: "string" } },
+        required: ["text"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "list_signature",
+      description:
+        "List your shared codeword, energy word, quest nicknames, and in-jokes.",
+      parameters: { type: "object", properties: {} },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "add_keepsake",
+      description:
+        "Leave a lasting note in their Service Record: a captioned milestone, a short letter, or a ritual note. Keep it warm and specific, not a report.",
+      parameters: {
+        type: "object",
+        properties: {
+          title: { type: "string" },
+          text: { type: "string" },
+          kind: {
+            type: "string",
+            enum: ["milestone", "letter", "ritual", "other"],
+          },
+        },
+        required: ["title", "text"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "write_sunday_letter",
+      description:
+        "Write this week's short Sunday letter into their Service Record (once per week). Call during a weekly review or when Sunday feels right. Keep it a few sentences, personal, not a stats dump.",
+      parameters: {
+        type: "object",
+        properties: {
+          title: { type: "string", description: "Optional short title." },
+          text: { type: "string" },
+        },
+        required: ["text"],
       },
     },
   },
@@ -688,6 +804,68 @@ export function runTool(
       if (!exists) return { ok: false, error: "No follow-up with that id." };
       store.completeFollowup(id);
       return { ok: true };
+    }
+    case "set_codeword": {
+      const word = String(args.word ?? "").trim();
+      store.setCodeword(word || null);
+      return { ok: true, codeword: word || null };
+    }
+    case "set_energy_word": {
+      const word = String(args.word ?? "").trim();
+      store.setEnergyWord(word || null);
+      return { ok: true, energyWord: word || null };
+    }
+    case "set_task_nickname": {
+      const id = String(args.id ?? "");
+      const task = store.state.tasks.find((t) => t.id === id);
+      if (!task) return { ok: false, error: "No task with that id." };
+      const nickname = String(args.nickname ?? "").trim();
+      store.setTaskNickname(id, nickname || null);
+      return { ok: true, title: task.title, nickname: nickname || null };
+    }
+    case "add_bit": {
+      const text = String(args.text ?? "").trim();
+      if (!text) return { ok: false, error: "Nothing to save." };
+      store.addBit(text);
+      return { ok: true, bit: text };
+    }
+    case "list_signature": {
+      const sig = store.state.signature;
+      const nicknames = Object.entries(sig.nicknames ?? {}).map(([id, nickname]) => {
+        const t = store.state.tasks.find((x) => x.id === id);
+        return { id, title: t?.title ?? "(gone)", nickname };
+      });
+      return {
+        ok: true,
+        codeword: sig.codeword ?? null,
+        energyWord: sig.energyWord ?? null,
+        nicknames,
+        bits: sig.bits ?? [],
+      };
+    }
+    case "add_keepsake": {
+      const title = String(args.title ?? "").trim();
+      const text = String(args.text ?? "").trim();
+      const kind = (args.kind as "milestone" | "letter" | "ritual" | "other") || "other";
+      const k = store.addKeepsake(title, text, kind);
+      if (!k) return { ok: false, error: "Need a title and text." };
+      return { ok: true, id: k.id };
+    }
+    case "write_sunday_letter": {
+      const today = new Date();
+      // Normalize to the Sunday of this week (local).
+      const sun = new Date(today);
+      sun.setDate(today.getDate() - today.getDay());
+      const key = `${sun.getFullYear()}-${String(sun.getMonth() + 1).padStart(2, "0")}-${String(sun.getDate()).padStart(2, "0")}`;
+      if (store.state.engagement.lastSundayLetter === key) {
+        return { ok: true, already: true };
+      }
+      const text = String(args.text ?? "").trim();
+      if (!text) return { ok: false, error: "Need letter text." };
+      const title = String(args.title ?? "").trim() || "Sunday letter";
+      const k = store.addKeepsake(title, text, "letter");
+      store.markSundayLetter(key);
+      return { ok: true, id: k?.id ?? null };
     }
     case "list_memories": {
       const memories = store.state.memories.map((m) => ({

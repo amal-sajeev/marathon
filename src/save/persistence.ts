@@ -74,6 +74,7 @@ function loadSettings(): Settings {
         spontaneousCount: parsed.spontaneousCount ?? 2,
         spontaneousStart: parsed.spontaneousStart ?? "10:00",
         spontaneousEnd: parsed.spontaneousEnd ?? "21:00",
+        nightlyDebrief: parsed.nightlyDebrief ?? true,
       };
     }
   } catch {
@@ -91,6 +92,7 @@ function loadSettings(): Settings {
     spontaneousCount: 2,
     spontaneousStart: "10:00",
     spontaneousEnd: "21:00",
+    nightlyDebrief: true,
   };
 }
 

@@ -265,6 +265,18 @@ export function SettingsPanel() {
             </label>
 
             <label
+              style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 12 }}
+            >
+              <input
+                type="checkbox"
+                style={{ flex: "0 0 auto", width: 18, height: 18 }}
+                checked={settings.nightlyDebrief !== false}
+                onChange={(e) => setSettings({ nightlyDebrief: e.target.checked })}
+              />
+              <span>Nightly debrief (moon button after 8pm)</span>
+            </label>
+
+            <label
               className="field__label"
               style={{ marginTop: 12, display: "block" }}
             >
