@@ -113,8 +113,15 @@ export function runCron(state: GameState, now: Date = new Date()): {
     tookDamage: hpLost > 0,
   });
 
+  // A promise with a deadline that's passed is a promise that was broken.
+  const bondRequests = state.bondRequests.map((r) =>
+    r.status === "open" && r.goal.byDate && r.goal.byDate < today
+      ? { ...r, status: "lapsed" as const }
+      : r,
+  );
+
   return {
-    state: { ...state, character, tasks, leelaMood, lastCron: today },
+    state: { ...state, character, tasks, leelaMood, bondRequests, lastCron: today },
     summary: {
       ran: true,
       missed,
@@ -156,6 +163,7 @@ function settleMood(
 
   let value = current.value ?? MOOD_BASELINE;
   let reason = current.reason;
+  let missedTask: string | undefined;
   let lockedEmotion: string | undefined;
   let lockedUntil: string | undefined;
 
@@ -170,8 +178,9 @@ function settleMood(
   } else {
     const ownMisses = ctx.missedTitles.length - ctx.missedSuggested.length;
     value += ctx.missedSuggested.length * -20 + ownMisses * -8;
-    reason = ctx.missedSuggested.length
-      ? `They didn't get to "${ctx.missedSuggested[0]}", which you had suggested.`
+    missedTask = ctx.missedSuggested[0];
+    reason = missedTask
+      ? `They didn't get to "${missedTask}", which you had suggested.`
       : `They missed ${ctx.missedTitles.length} of yesterday's dailies.`;
     // The resting face stays fallen for the rest of today, not just one message.
     lockedEmotion = "sad";
@@ -182,6 +191,7 @@ function settleMood(
     value: Math.max(0, Math.min(100, Math.round(value))),
     lastSettled: ctx.today,
     reason,
+    missedTask,
     lockedEmotion,
     lockedUntil,
     // A new day gets a fresh chance for the opener to land once.

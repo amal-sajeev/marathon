@@ -13,8 +13,9 @@ import { WardrobePanel } from "./components/WardrobePanel";
 import { MoodSheet } from "./components/MoodSheet";
 import { BondMilestone } from "./components/BondMilestone";
 import { Welcome } from "./components/Welcome";
-import { AssetImage } from "./components/AssetImage";
 import { ChatPanel } from "./agent/ChatPanel";
+import { FaceAvatar } from "./agent/FaceAvatar";
+import { useCrack, useRestingFace } from "./agent/useLeelaFace";
 import { accentStyle } from "./game/accent";
 import { useBondWatcher } from "./game/useBondWatcher";
 import { bondStage, stageColor } from "./game/bond";
@@ -30,6 +31,10 @@ export function App() {
   const saveStatus = useStore((s) => s.saveStatus);
   const cosmetics = useStore((s) => s.state.cosmetics);
   const bond = useStore((s) => s.state.bond);
+  // The orb is the only place her mood shows without opening anything, so a
+  // day that went badly is visible from the board.
+  const restingFace = useRestingFace();
+  const crack = useCrack();
   const setAddOpen = useStore((s) => s.setAddOpen);
   useBondWatcher();
 
@@ -125,7 +130,7 @@ export function App() {
         onClick={() => setChatOpen(true)}
         aria-label="Talk to your companion"
       >
-        <AssetImage slot="agentIcon" />
+        <FaceAvatar emotion={restingFace} crack={crack} />
       </button>
 
       <Toasts />

@@ -3,6 +3,7 @@ import { applyDamage, applyGain, reviveIfDead, spendGold } from "./scoring";
 import { runCron, todayStr } from "./cron";
 import type {
   Bond,
+  BondRequest,
   Character,
   Cosmetics,
   Daily,
@@ -24,8 +25,27 @@ import type {
   Todo,
 } from "./types";
 import { CONSUMABLES, cosmeticById } from "../game/cosmetics";
-import { BOND_STAGES } from "../game/bond";
+import { BOND_STAGES, bondStage } from "../game/bond";
 import { MOOD_BASELINE, MOOD_LOW } from "../game/mood";
+import { loreById } from "../game/lore";
+import { requestProgress } from "../game/requests";
+
+const KEEPSAKE_CAP = 40;
+const DIARY_CAP = 400;
+
+/**
+ * Diary pages and keepsakes share one list but not one budget. Under a single
+ * cap of 40 the diary would evict itself inside six weeks, and bond letters
+ * would be competing with it for the same slots. 400 pages is roughly a year
+ * and about 90KB in the save, which is small next to the history array.
+ */
+function capKeepsakes(list: Keepsake[]): Keepsake[] {
+  let diary = 0;
+  let other = 0;
+  return list.filter((k) =>
+    k.kind === "diary" ? ++diary <= DIARY_CAP : ++other <= KEEPSAKE_CAP,
+  );
+}
 
 /** Mood is a 0..100 scale; every write goes through this. */
 export function clampMood(v: number): number {
@@ -49,6 +69,9 @@ function moodOnCompletion(mood: LeelaMood | undefined): LeelaMood {
     value: clampMood(current.value + 10),
     lockedEmotion: undefined,
     lockedUntil: undefined,
+    // The grievance is settled. Leaving it would let the disappointed opener
+    // fire in the same breath as the relief line, which reads as unhinged.
+    missedTask: undefined,
     reliefPending: true,
   };
 }
@@ -116,6 +139,7 @@ export function freshState(name?: string): GameState {
     keepsakes: [],
     leelaMood: { value: MOOD_BASELINE },
     bondRequests: [],
+    unlockedLore: [],
     createdAt: nowIso(),
     lastCron: todayStr(),
     updatedAt: nowIso(),
@@ -176,6 +200,7 @@ export function normalizeState(state: GameState): GameState {
       value: clampMood(state.leelaMood?.value ?? MOOD_BASELINE),
       lastSettled: state.leelaMood?.lastSettled,
       reason: state.leelaMood?.reason,
+      missedTask: state.leelaMood?.missedTask,
       lockedEmotion: state.leelaMood?.lockedEmotion,
       lockedUntil: state.leelaMood?.lockedUntil,
       ackDate: state.leelaMood?.ackDate,
@@ -183,6 +208,7 @@ export function normalizeState(state: GameState): GameState {
       damageAt: state.leelaMood?.damageAt,
     },
     bondRequests: Array.isArray(state.bondRequests) ? state.bondRequests : [],
+    unlockedLore: Array.isArray(state.unlockedLore) ? state.unlockedLore : [],
     updatedAt: state.updatedAt ?? nowIso(),
   };
 }
@@ -287,7 +313,25 @@ interface StoreState extends UIState {
   setTaskNickname: (taskId: string, nickname: string | null) => void;
   addBit: (text: string) => void;
   removeBit: (text: string) => void;
-  addKeepsake: (title: string, text: string, kind?: Keepsake["kind"]) => Keepsake | null;
+  addKeepsake: (
+    title: string,
+    text: string,
+    kind?: Keepsake["kind"],
+    extra?: { emotion?: string; date?: string },
+  ) => Keepsake | null;
+
+  // mood
+  markMoodAck: () => void;
+  clearRelief: () => void;
+
+  // things she asks of them, and what she gives back
+  proposeRequest: (
+    goal: BondRequest["goal"],
+    reward: string,
+    loreId?: string,
+  ) => BondRequest | null;
+  completeRequest: (id: string) => BondRequest | null;
+  unlockLore: (id: string) => boolean;
 
   // cron
   runCronNow: () => void;
@@ -1025,7 +1069,7 @@ export const useStore = create<StoreState>((set, get) => ({
       },
     })),
 
-  addKeepsake: (title, text, kind = "other") => {
+  addKeepsake: (title, text, kind = "other", extra) => {
     const t = title.trim();
     const body = text.trim();
     if (!t || !body) return null;
@@ -1035,14 +1079,87 @@ export const useStore = create<StoreState>((set, get) => ({
       title: t,
       text: body,
       createdAt: nowIso(),
+      emotion: extra?.emotion,
+      date: extra?.date,
     };
+    set((s) => {
+      // One diary page per day: a re-run of the recap replaces the entry
+      // rather than filing a second one for the same date.
+      const existing =
+        kind === "diary" && keepsake.date
+          ? s.state.keepsakes.filter(
+              (k) => !(k.kind === "diary" && k.date === keepsake.date),
+            )
+          : s.state.keepsakes;
+      return {
+        state: { ...s.state, keepsakes: capKeepsakes([keepsake, ...existing]) },
+      };
+    });
+    return keepsake;
+  },
+
+  markMoodAck: () =>
     set((s) => ({
       state: {
         ...s.state,
-        keepsakes: [keepsake, ...s.state.keepsakes].slice(0, 40),
+        leelaMood: { ...s.state.leelaMood, ackDate: todayStr() },
+      },
+    })),
+
+  clearRelief: () =>
+    set((s) => ({
+      state: {
+        ...s.state,
+        leelaMood: { ...s.state.leelaMood, reliefPending: false },
+      },
+    })),
+
+  proposeRequest: (goal, reward, loreId) => {
+    const st = get().state;
+    // One at a time. Two open promises stop being promises.
+    if (st.bondRequests.some((r) => r.status === "open")) return null;
+    if (!Number.isFinite(goal.target) || goal.target < 1) return null;
+
+    const req: BondRequest = {
+      id: uid(),
+      stageIndex: bondStage(st.bond).index,
+      goal: { ...goal, target: Math.round(goal.target) },
+      reward: reward.trim(),
+      loreId,
+      status: "open",
+      createdAt: nowIso(),
+    };
+    set((s) => ({
+      state: { ...s.state, bondRequests: [req, ...s.state.bondRequests].slice(0, 30) },
+    }));
+    return req;
+  },
+
+  completeRequest: (id) => {
+    const st = get().state;
+    const req = st.bondRequests.find((r) => r.id === id && r.status === "open");
+    if (!req) return null;
+    if (!requestProgress(st, req).met) return null;
+
+    set((s) => ({
+      state: {
+        ...s.state,
+        bondRequests: s.state.bondRequests.map((r) =>
+          r.id === id ? { ...r, status: "done" as const } : r,
+        ),
       },
     }));
-    return keepsake;
+    return req;
+  },
+
+  unlockLore: (id) => {
+    const entry = loreById(id);
+    if (!entry) return false;
+    if (get().state.unlockedLore.includes(id)) return false;
+    set((s) => ({
+      state: { ...s.state, unlockedLore: [...s.state.unlockedLore, id] },
+    }));
+    return true;
   },
 
   runCronNow: () => {
@@ -1125,7 +1242,7 @@ export const useStore = create<StoreState>((set, get) => ({
         state: {
           ...s.state,
           bond: { ...s.state.bond, lastStageIndex: index },
-          keepsakes: keepsakes.slice(0, 40),
+          keepsakes: capKeepsakes(keepsakes),
         },
       };
     });

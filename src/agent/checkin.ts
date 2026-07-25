@@ -1,5 +1,6 @@
 import { useStore } from "../state/store";
-import { isDailyActiveOn, todayStr } from "../state/cron";
+import { isDailyActiveOn, shiftDays, todayStr } from "../state/cron";
+import { withDiaryDate } from "./tools";
 import type { Daily, DayRecord, Habit, Todo } from "../state/types";
 import { runAgentTurn, type ChatMessage } from "./mistral";
 import { nextId, useChat } from "./chatStore";
@@ -380,6 +381,78 @@ export async function runCheckIn(): Promise<void> {
   }
 }
 
+const RECAP_DIRECTIVE = `[MIDNIGHT RECAP]
+No one is reading this as a message. You are writing the day's page in your diary, alone, after they've gone.
+
+- Call write_diary exactly once. Two or three sentences, your own voice, addressed to them.
+- Name the specific things they actually finished, from the list below. Not a count, the names.
+- If they finished nothing, say so honestly. No lecture, no consolation prize.
+- Pick the emotion that matches how the day genuinely landed for you.
+- Stay inside your current closeness stage. Early pages are observant and dry; warmth arrives only as the bond does, exactly as it would in conversation.
+- After the tool call, reply with nothing at all. There is no one to answer.`;
+
+/** What she has to work with when writing a page for a given day. */
+function recapContext(date: string): string {
+  const state = useStore.getState().state;
+  const done: string[] = [];
+  for (const t of state.tasks) {
+    if (t.type === "daily" && (t as Daily).lastCompletedOn === date) done.push(t.title);
+    if (t.type === "todo" && (t as Todo).completedAt?.slice(0, 10) === date) {
+      done.push(t.title);
+    }
+  }
+
+  const lines = [`The day you're writing about: ${date}.`];
+  lines.push(
+    done.length ? `They finished: ${done.join(", ")}.` : "They finished nothing today.",
+  );
+  const rec = state.history.find((d: DayRecord) => d.date === date);
+  if (rec) lines.push(`Total logged that day, including habits: ${rec.completed}.`);
+  if (state.leelaMood?.reason) lines.push(`Where your head is at: ${state.leelaMood.reason}`);
+  return lines.join("\n");
+}
+
+/** Dates already attempted this session, so a failing key isn't hammered. */
+const recapTried = new Set<string>();
+
+async function writeRecapFor(date: string): Promise<void> {
+  const store = useStore.getState();
+  if (!store.settings.apiKey) return;
+  if (recapTried.has(date)) return;
+  recapTried.add(date);
+
+  const directive: ChatMessage = {
+    role: "user",
+    content: `${RECAP_DIRECTIVE}\n\n${recapContext(date)}`,
+  };
+  try {
+    await withDiaryDate(date, () =>
+      runAgentTurn(store.settings, [directive], { unattended: true }),
+    );
+  } catch {
+    // A missing page is not worth interrupting anyone over; tomorrow's runs anyway.
+  }
+}
+
+/**
+ * File the day's diary page if it's owed and missing.
+ *
+ * Late enough in the evening the page for today can be written. Before that,
+ * the only thing outstanding is yesterday's, which happens when the app sat
+ * closed all evening and through the rollover.
+ */
+export function maybeWriteRecap(now: Date = new Date(), forDate?: string): void {
+  const state = useStore.getState().state;
+  const date = forDate ?? (now.getHours() >= 21 ? todayStr(now) : shiftDays(now, -1));
+
+  // Nothing to write about a day that predates the save.
+  if (date < todayStr(new Date(state.createdAt))) return;
+  if (state.keepsakes.some((k) => k.kind === "diary" && k.date === date)) return;
+  if (useChat.getState().busy) return;
+
+  void writeRecapFor(date);
+}
+
 /**
  * Short evening ritual. Marks the day as debriefed so it doesn't spam.
  */
@@ -434,4 +507,8 @@ export async function runNightlyDebrief(): Promise<void> {
   } finally {
     useChat.getState().setBusy(false);
   }
+
+  // The debrief is the natural end of the day, so the page gets written now
+  // rather than waiting on a rollover the app may well sleep through.
+  maybeWriteRecap(new Date(), todayStr());
 }

@@ -232,6 +232,12 @@ export interface LeelaMood {
   lastSettled?: string;
   /** why she's where she is, surfaced in her context and the diary */
   reason?: string;
+  /**
+   * The specific daily she suggested and they missed. Kept apart from `reason`,
+   * which is prose, because the opener has to name the task exactly and
+   * survives into the next session after the CronSummary is long gone.
+   */
+  missedTask?: string;
   /** resting expression held for the rest of the day after a miss */
   lockedEmotion?: string;
   lockedUntil?: string;
@@ -256,6 +262,8 @@ export interface BondRequest {
   };
   /** what she promises in return, in her words */
   reward: string;
+  /** the lore entry she's holding back until this lands, if any */
+  loreId?: string;
   status: "open" | "done" | "lapsed";
   createdAt: string;
 }
@@ -293,6 +301,8 @@ export interface GameState {
   leelaMood: LeelaMood;
   /** things Leela has asked of the user */
   bondRequests: BondRequest[];
+  /** ids from the lore pool she has already told them about */
+  unlockedLore: string[];
   /** ISO date (yyyy-mm-dd) that cron last ran */
   lastCron?: string;
   createdAt: string;

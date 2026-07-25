@@ -5,8 +5,11 @@ import { rankForLevel, nextRank } from "../game/ranks";
 import { BOND_STAGES, bondStage, nextBondStage } from "../game/bond";
 import { computeAchievements } from "../game/achievements";
 import { runNightlyDebrief, runWeeklyReview } from "../agent/checkin";
-import type { DayRecord, Habit } from "../state/types";
+import type { DayRecord, Habit, Keepsake } from "../state/types";
 import { RankBadge } from "./RankBadge";
+import { FaceAvatar } from "../agent/FaceAvatar";
+import { isEmotion } from "../agent/emotions";
+import { useMemo, useState } from "react";
 
 const HEATMAP_DAYS = 119; // 17 weeks
 
@@ -98,7 +101,19 @@ export function StatsPanel() {
   const history = useStore((s) => s.state.history);
   const fullState = useStore((s) => s.state);
   const signature = useStore((s) => s.state.signature);
-  const keepsakes = useStore((s) => s.state.keepsakes);
+  const allKeepsakes = useStore((s) => s.state.keepsakes);
+  const [view, setView] = useState<"record" | "diary">("record");
+
+  // Her diary is correspondence and gets its own tab; the Keepsakes strip on
+  // the record side stays what it was, milestones and letters.
+  const diary = useMemo(
+    () => allKeepsakes.filter((k) => k.kind === "diary"),
+    [allKeepsakes],
+  );
+  const keepsakes = useMemo(
+    () => allKeepsakes.filter((k) => k.kind !== "diary"),
+    [allKeepsakes],
+  );
 
   if (!open) return null;
 
@@ -139,7 +154,31 @@ export function StatsPanel() {
           </button>
         </div>
 
+        <div className="sheet__seg" role="tablist">
+          <button
+            role="tab"
+            aria-selected={view === "record"}
+            className={`seg ${view === "record" ? "seg--on" : ""}`}
+            onClick={() => setView("record")}
+          >
+            Record
+          </button>
+          <button
+            role="tab"
+            aria-selected={view === "diary"}
+            className={`seg ${view === "diary" ? "seg--on" : ""}`}
+            onClick={() => setView("diary")}
+          >
+            Diary
+            {diary.length > 0 ? <span className="seg__count">{diary.length}</span> : null}
+          </button>
+        </div>
+
         <div className="sheet__body">
+          {view === "diary" ? (
+            <Diary pages={diary} />
+          ) : (
+            <>
           <div className="rank-strip">
             <div className="rank-strip__badge">
               <RankBadge level={character.level} size={72} />
@@ -354,8 +393,40 @@ export function StatsPanel() {
             and 20% of your gold - so guard it. Closeness with Leela still grows
             on its own clock; shared bits and letters sit beside it.
           </div>
+            </>
+          )}
         </div>
       </div>
     </>
+  );
+}
+
+/** Her diary, newest page first, as correspondence rather than a log. */
+function Diary({ pages }: { pages: Keepsake[] }) {
+  if (pages.length === 0) {
+    return (
+      <div className="hint" style={{ marginTop: 16 }}>
+        Nothing written yet. Leela writes a page at the end of each day, once
+        there's a day to write about.
+      </div>
+    );
+  }
+
+  return (
+    <div className="diary">
+      {pages.map((p) => (
+        <article className="diary-page" key={p.id}>
+          <div className="diary-page__face">
+            <FaceAvatar
+              emotion={p.emotion && isEmotion(p.emotion) ? p.emotion : "neutral"}
+            />
+          </div>
+          <div className="diary-page__body">
+            <div className="diary-page__date">{p.title}</div>
+            <div className="diary-page__text">{p.text}</div>
+          </div>
+        </article>
+      ))}
+    </div>
   );
 }

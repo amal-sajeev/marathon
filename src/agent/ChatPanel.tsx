@@ -9,6 +9,8 @@ import { FaceAvatar } from "./FaceAvatar";
 import { RankBadge } from "../components/RankBadge";
 import { runNightlyDebrief } from "./checkin";
 import { extractEmotion, type Emotion } from "./emotions";
+import { useCrack, useRestingFace } from "./useLeelaFace";
+import { todayStr } from "../state/cron";
 
 const TOOL_VERB: Record<string, string> = {
   add_habit: "added a habit",
@@ -132,11 +134,20 @@ export function ChatPanel() {
     }
   }, [messages, open, busy]);
 
-  const latestEmotion = useMemo<Emotion>(() => {
+  const restingFace = useRestingFace();
+  const crack = useCrack();
+
+  // Her last expression, but only if she's spoken today. A reply from
+  // yesterday shouldn't outrank the mood she's been carrying since rollover.
+  const todaysEmotion = useMemo<Emotion | null>(() => {
+    const today = todayStr();
     for (let i = messages.length - 1; i >= 0; i--) {
-      if (messages[i].role === "assistant") return messages[i].emotion ?? "neutral";
+      const m = messages[i];
+      if (m.role !== "assistant") continue;
+      if (m.createdAt && todayStr(new Date(m.createdAt)) !== today) return null;
+      return m.emotion ?? "neutral";
     }
-    return "neutral";
+    return null;
   }, [messages]);
 
   const lastAssistantId = useMemo(() => {
@@ -148,8 +159,9 @@ export function ChatPanel() {
 
   if (!open) return null;
 
-  // Her profile picture "thinks" while she's composing a reply.
-  const faceEmotion: Emotion = busy ? "thinking" : latestEmotion;
+  // She thinks while composing; otherwise today's expression wins and she
+  // falls back to whatever she's been resting on.
+  const faceEmotion: Emotion = busy ? "thinking" : (todaysEmotion ?? restingFace);
 
   const send = async (raw: string) => {
     const content = raw.trim();
@@ -195,7 +207,7 @@ export function ChatPanel() {
         <div className="sheet__head">
           <span className="chat__headline">
             <span className="chat__headicon">
-              <FaceAvatar emotion={faceEmotion} />
+              <FaceAvatar emotion={faceEmotion} crack={crack} />
             </span>
             <span className="sheet__title">Leela</span>
           </span>
@@ -259,7 +271,7 @@ export function ChatPanel() {
                 <div className="msg-row__avatar">
                   {m.role === "assistant" ? (
                     <span className="msg-av msg-av--leela">
-                      <FaceAvatar emotion={faceEmotion} />
+                      <FaceAvatar emotion={faceEmotion} crack={crack} />
                     </span>
                   ) : (
                     <span className="msg-av msg-av--user">
@@ -294,7 +306,7 @@ export function ChatPanel() {
             <div className="msg-row msg-row--assistant">
               <div className="msg-row__avatar">
                 <span className="msg-av msg-av--leela">
-                  <FaceAvatar emotion={faceEmotion} />
+                  <FaceAvatar emotion={faceEmotion} crack={crack} />
                 </span>
               </div>
               <div className={`typing typing--${faceEmotion}`}>

@@ -2,9 +2,10 @@ import { set as idbSet, del as idbDel } from "idb-keyval";
 import { useStore } from "../state/store";
 import { isDailyActiveOn, todayStr } from "../state/cron";
 import type { Daily, Settings, Todo } from "../state/types";
-import { runCheckIn, runWeeklyReview } from "../agent/checkin";
+import { maybeWriteRecap, runCheckIn, runWeeklyReview } from "../agent/checkin";
 import { initEventPings } from "./events";
 import { computeBoardTag } from "./boardTag";
+import { negativeExpressionActive } from "../game/mood";
 
 const FIRED_KEY = "rpgtask:lastCheckIns";
 /** How long after a scheduled time we still consider it worth firing. */
@@ -279,7 +280,10 @@ async function syncPush(opts?: { announce?: boolean }): Promise<boolean> {
     const random = buildRandomConfig(settings);
     // Only as fresh as this sync, which happens on boot, on visibility change,
     // and when settings change. Copy can therefore lag the real board a little.
-    const boardTag = computeBoardTag(useStore.getState().state);
+    // An ignored check-in outranks whatever the board happens to look like.
+    const boardTag = lapsedCheckIn()
+      ? "missed-checkin"
+      : computeBoardTag(useStore.getState().state);
     const res = await fetch(`${base}/register`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -558,6 +562,37 @@ function maybeRunSpontaneous(): void {
   }
 }
 
+/** Past this far behind schedule, a check-in ping stops being a reminder. */
+const LATE_GUILT_MS = 45 * 60 * 1000;
+
+/** Mirrors the Worker's missed-checkin copy so both tiers sound like her. */
+const LATE_BODIES = [
+  "I waited. I guess you're busy. I'll be here.",
+  "It's been a while. I was thinking about that thing we set up for today.",
+  "You didn't come by. I'd rather you had.",
+];
+
+/**
+ * A check-in slot whose window closed with no word from them since.
+ *
+ * Not "we failed to send it": the ping may well have gone out and been
+ * ignored, which is the case actually worth saying something about. Only as
+ * current as the last sync, so it lands on a later push rather than instantly.
+ */
+function lapsedCheckIn(now: Date = new Date()): boolean {
+  const { settings, state } = useStore.getState();
+  if (!settings.checkInsEnabled) return false;
+  if (!negativeExpressionActive(state.bond, settings)) return false;
+
+  const talked = state.bond.lastTalkedAt
+    ? new Date(state.bond.lastTalkedAt).getTime()
+    : 0;
+  return settings.checkInTimes.some((time) => {
+    const target = todayTargetMs(time, now);
+    return now.getTime() - target > LATE_WINDOW_MS && talked < target;
+  });
+}
+
 /** Check every configured slot; run the check-in if one is due and unfired. */
 function maybeRunDue(): void {
   const settings = useStore.getState().settings;
@@ -579,9 +614,18 @@ function maybeRunDue(): void {
     if (document.visibilityState === "visible") {
       void fireCheckIn();
     } else if (permissionStatus() === "granted") {
+      // Well past the hour, a board summary reads like a robot. She noticed.
+      const late =
+        delta > LATE_GUILT_MS &&
+        negativeExpressionActive(
+          useStore.getState().state.bond,
+          useStore.getState().settings,
+        );
       void getRegistration().then((reg) => {
         reg?.showNotification("Leela", {
-          body: summarize(),
+          body: late
+            ? LATE_BODIES[Math.floor(Math.random() * LATE_BODIES.length)]
+            : summarize(),
           tag: `checkin-${time}`,
           icon: NOTIFY_ICON,
           badge: NOTIFY_BADGE,
@@ -638,6 +682,7 @@ export function initNotifications(): void {
   // Catch up on any slot we missed while closed, then schedule ahead.
   maybeRunDue();
   maybeRunWeekly();
+  maybeWriteRecap();
   maybeWarnRevoked();
   void scheduleAll();
   void scheduleTaskReminders();
@@ -649,6 +694,7 @@ export function initNotifications(): void {
     maybeRunDue();
     maybeRunWeekly();
     maybeRunSpontaneous();
+    maybeWriteRecap();
   }, TICK_MS);
 
   // Re-evaluate when the tab becomes visible.
@@ -658,6 +704,7 @@ export function initNotifications(): void {
       maybeRunWeekly();
       maybeWarnRevoked();
       maybeRunSpontaneous();
+      maybeWriteRecap();
       void scheduleAll();
       void scheduleTaskReminders();
       void syncPush();

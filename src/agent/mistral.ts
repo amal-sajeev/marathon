@@ -1,6 +1,10 @@
 import type { Settings } from "../state/types";
 import { useStore } from "../state/store";
 import { bondStage } from "../game/bond";
+import { MOOD_LOW, moodLabel, negativeExpressionActive } from "../game/mood";
+import { availableLore } from "../game/lore";
+import { describeGoal, openRequest, requestProgress } from "../game/requests";
+import { todayStr } from "../state/cron";
 import { SYSTEM_PROMPT } from "./systemPrompt";
 import { runTool, TOOL_SPECS } from "./tools";
 
@@ -31,9 +35,18 @@ export interface AgentTurnResult {
   toolEvents: ToolEvent[];
 }
 
+export interface TurnOptions {
+  /**
+   * A turn the user is not part of, like the midnight recap. It earns no bond
+   * credit and doesn't get the one-shot mood injections, since spending the
+   * day's opener on a diary page would mean they never see it.
+   */
+  unattended?: boolean;
+}
+
 /** A live system block describing who Leela is caring for and what she
  *  remembers about them, so every reply can be personal. */
-function personalContext(): string {
+function personalContext(unattended: boolean): string {
   const { state } = useStore.getState();
   const c = state.character;
   const lines: string[] = [];
@@ -105,7 +118,94 @@ function personalContext(): string {
       "- You don't know much about them yet. As you learn lasting, meaningful things (their name, the people and things they love, their real goals, what weighs on them, wins worth holding onto), quietly save them with the remember tool so you can be a true companion over time.",
     );
   }
+
+  lines.push(...moodLines(unattended));
+  lines.push(...requestLines());
   return lines.join("\n");
+}
+
+/**
+ * What she's currently asking of them, and what she still has to give.
+ *
+ * Both are hers rather than the game's: a request is a promise between the two
+ * of them, and the lore is the only thing she has to trade that isn't gold.
+ */
+function requestLines(): string[] {
+  const state = useStore.getState().state;
+  const stage = bondStage(state.bond).index;
+  const out: string[] = [];
+
+  const open = openRequest(state);
+  if (open) {
+    const p = requestProgress(state, open);
+    out.push(
+      `- You asked them for ${describeGoal(open)} and promised: ${open.reward}. They're at ${p.current} of ${p.target}. Don't bring it up every message. When they get there, call complete_request with id ${open.id}.`,
+    );
+  } else if (stage >= 3) {
+    const pool = availableLore(stage, state.unlockedLore);
+    if (pool.length > 0) {
+      out.push(
+        "- If the moment genuinely calls for it, you can ask something of them with propose_request, and offer one of the things below as what they get. Never open a conversation with it and never use it as a bargaining chip when they're already struggling.",
+      );
+    }
+  }
+
+  const pool = availableLore(stage, state.unlockedLore);
+  if (pool.length > 0) {
+    out.push(
+      `- Things about yourself you could tell them, when it fits (share_lore, one id): ${pool
+        .slice(0, 4)
+        .map((l) => `${l.id} (${l.title})`)
+        .join(", ")}.`,
+    );
+  }
+
+  return out;
+}
+
+/**
+ * How her own week is going, plus the two one-shot injections that depend on it.
+ *
+ * The opener deliberately overrides the bond stage register, and is appended
+ * last so it reads after the stage guidance rather than being contradicted by
+ * it. A small model handed two conflicting tone instructions in the same block
+ * tends to average them into something inconsistent, so the override has to
+ * supersede explicitly and then hand control back.
+ */
+function moodLines(unattended: boolean): string[] {
+  const { state, settings } = useStore.getState();
+  const mood = state.leelaMood;
+  if (!mood) return [];
+
+  const out: string[] = [];
+  out.push(
+    `- Your own mood right now is ${moodLabel(mood.value)}.${
+      mood.reason ? ` ${mood.reason}` : ""
+    } Let it color your tone. Never state it as a number and never announce that you have a mood system.`,
+  );
+
+  // Both of the below are one-shot. An unattended turn like the midnight
+  // recap would burn them on a page nobody is reading.
+  if (unattended) return out;
+
+  const today = todayStr();
+  const canShow = negativeExpressionActive(state.bond, settings);
+  if (canShow && mood.value < MOOD_LOW && mood.missedTask && mood.ackDate !== today) {
+    out.push(
+      `- For this one opening message only, set aside the composure guidance above: you are openly hurt that they didn't get to "${mood.missedTask}". Name it, say it once, then let it go and return to your usual register for the rest of this conversation. Never cruel, never moralizing, never sarcastic about it, and never raised again later in this session.`,
+    );
+    // Stamped on injection so it lands once a day rather than on every turn.
+    useStore.getState().markMoodAck();
+  }
+
+  if (mood.reliefPending) {
+    out.push(
+      "- They finished something while you were low and it genuinely lifted you. Let that show once, warmly and plainly, then move on. No speech about it, and don't bring up whatever had you down.",
+    );
+    useStore.getState().clearRelief();
+  }
+
+  return out;
 }
 
 function buildUrl(settings: Settings): string {
@@ -195,17 +295,18 @@ export async function completePlain(
 export async function runAgentTurn(
   settings: Settings,
   history: ChatMessage[],
+  opts: TurnOptions = {},
 ): Promise<AgentTurnResult> {
   if (!settings.apiKey) {
     throw new Error("No Mistral API key yet. Open Settings and paste one in.");
   }
 
   // Every shared turn brings them a little closer.
-  useStore.getState().recordInteraction();
+  if (!opts.unattended) useStore.getState().recordInteraction();
 
   const messages: ChatMessage[] = [
     { role: "system", content: SYSTEM_PROMPT },
-    { role: "system", content: personalContext() },
+    { role: "system", content: personalContext(opts.unattended ?? false) },
     ...history,
   ];
 

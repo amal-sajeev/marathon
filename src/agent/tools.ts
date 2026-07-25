@@ -1,5 +1,38 @@
 import { uid, useStore } from "../state/store";
 import type { ChecklistItem, Daily, Difficulty, Habit, Task, Todo } from "../state/types";
+import { todayStr } from "../state/cron";
+import { EMOTIONS, isEmotion } from "./emotions";
+import { bondStage } from "../game/bond";
+import { loreById } from "../game/lore";
+import { describeGoal, requestProgress } from "../game/requests";
+
+/**
+ * The day a diary page belongs to.
+ *
+ * The recap can run just after midnight for the day that has only now ended,
+ * and she has no reliable way to know that from inside the conversation, so
+ * the caller states it rather than trusting a model-supplied date.
+ */
+let diaryDate: string | null = null;
+
+export async function withDiaryDate<T>(date: string, fn: () => Promise<T>): Promise<T> {
+  diaryDate = date;
+  try {
+    return await fn();
+  } finally {
+    diaryDate = null;
+  }
+}
+
+/** "Sat 25 Jul" -- the heading on a diary page. */
+function prettyDate(iso: string): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString(undefined, {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  });
+}
 
 export interface ToolSpec {
   type: "function";
@@ -511,6 +544,79 @@ export const TOOL_SPECS: ToolSpec[] = [
   {
     type: "function",
     function: {
+      name: "propose_request",
+      description:
+        "Ask something of them: a goal you want them to hit, and what you'll give in return. Only from the Fond stage onward, only one open at a time, and only when it arises naturally in conversation. If the reward is something about yourself, pass the lore id you were offered.",
+      parameters: {
+        type: "object",
+        properties: {
+          kind: {
+            type: "string",
+            enum: ["streak", "dailies"],
+            description:
+              "streak: a run of days with every daily cleared. dailies: a count of things finished from now on.",
+          },
+          target: { type: "number" },
+          byDate: { type: "string", description: "Optional yyyy-mm-dd deadline." },
+          reward: {
+            type: "string",
+            description: "What they get, in your words. Keep it short.",
+          },
+          loreId: { type: "string", description: "Optional lore id you're holding back." },
+        },
+        required: ["kind", "target", "reward"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "complete_request",
+      description:
+        "Mark your open request as kept. Refuses if they haven't actually hit it, so check before you celebrate. Unlocks the lore you attached, which you then tell them with share_lore.",
+      parameters: {
+        type: "object",
+        properties: { id: { type: "string" } },
+        required: ["id"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "share_lore",
+      description:
+        "Tell them one of the things about yourself you've been holding back. You're given the gist; say it in your own voice, once, and don't make a ceremony of it. It's filed in their Service Record afterward.",
+      parameters: {
+        type: "object",
+        properties: { id: { type: "string" } },
+        required: ["id"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "write_diary",
+      description:
+        "Write today's page in your diary: two or three sentences about how their day actually went, in your own voice, addressed to them. Name the specific things they finished. Once per day, at the end of the day. Pick the face you'd be wearing while writing it.",
+      parameters: {
+        type: "object",
+        properties: {
+          text: { type: "string" },
+          emotion: {
+            type: "string",
+            enum: [...EMOTIONS],
+            description: "The face you'd be wearing while writing this page.",
+          },
+        },
+        required: ["text"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "write_sunday_letter",
       description:
         "Write this week's short Sunday letter into their Service Record (once per week). Call during a weekly review or when Sunday feels right. Keep it a few sentences, personal, not a stats dump.",
@@ -852,6 +958,65 @@ export function runTool(
       const k = store.addKeepsake(title, text, kind);
       if (!k) return { ok: false, error: "Need a title and text." };
       return { ok: true, id: k.id };
+    }
+    case "propose_request": {
+      const stage = bondStage(store.state.bond).index;
+      if (stage < 3) {
+        return { ok: false, error: "Too early to be asking them for things." };
+      }
+      const kind = args.kind === "dailies" ? "dailies" : "streak";
+      const target = Number(args.target);
+      const byDate = String(args.byDate ?? "").trim() || undefined;
+      const reward = String(args.reward ?? "").trim();
+      const loreId = String(args.loreId ?? "").trim() || undefined;
+      if (!reward) return { ok: false, error: "Say what they get out of it." };
+      if (loreId && !loreById(loreId)) return { ok: false, error: "No such lore id." };
+
+      const req = store.proposeRequest({ kind, target, byDate }, reward, loreId);
+      if (!req) {
+        return { ok: false, error: "You already have something open, or the target is nonsense." };
+      }
+      return { ok: true, id: req.id, goal: describeGoal(req) };
+    }
+    case "complete_request": {
+      const id = String(args.id ?? "").trim();
+      const req = store.state.bondRequests.find((r) => r.id === id);
+      if (!req) return { ok: false, error: "No request by that id." };
+      if (req.status !== "open") return { ok: true, already: true };
+
+      const progress = requestProgress(store.state, req);
+      const done = store.completeRequest(id);
+      if (!done) {
+        return {
+          ok: false,
+          error: "Not there yet.",
+          progress: `${progress.current} of ${progress.target}`,
+        };
+      }
+      return { ok: true, loreId: done.loreId ?? null, reward: done.reward };
+    }
+    case "share_lore": {
+      const id = String(args.id ?? "").trim();
+      const entry = loreById(id);
+      if (!entry) return { ok: false, error: "No such lore id." };
+
+      const stage = bondStage(store.state.bond).index;
+      if (entry.stage > stage) {
+        return { ok: false, error: "You aren't close enough to say that yet." };
+      }
+      if (!store.unlockLore(id)) return { ok: true, already: true, gist: entry.gist };
+
+      store.addKeepsake(entry.title, entry.gist, "other");
+      return { ok: true, gist: entry.gist };
+    }
+    case "write_diary": {
+      const text = String(args.text ?? "").trim();
+      if (!text) return { ok: false, error: "Need something to write." };
+      const raw = String(args.emotion ?? "").trim().toLowerCase();
+      const emotion = isEmotion(raw) ? raw : "neutral";
+      const date = diaryDate ?? todayStr();
+      const k = store.addKeepsake(prettyDate(date), text, "diary", { emotion, date });
+      return { ok: true, id: k?.id ?? null, date };
     }
     case "write_sunday_letter": {
       const today = new Date();
