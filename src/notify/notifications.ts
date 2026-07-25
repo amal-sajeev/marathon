@@ -4,6 +4,7 @@ import { isDailyActiveOn, todayStr } from "../state/cron";
 import type { Daily, Settings, Todo } from "../state/types";
 import { runCheckIn, runWeeklyReview } from "../agent/checkin";
 import { initEventPings } from "./events";
+import { computeBoardTag } from "./boardTag";
 
 const FIRED_KEY = "rpgtask:lastCheckIns";
 /** How long after a scheduled time we still consider it worth firing. */
@@ -276,15 +277,18 @@ async function syncPush(opts?: { announce?: boolean }): Promise<boolean> {
 
     const times = toUtcTimes(settings.checkInTimes);
     const random = buildRandomConfig(settings);
+    // Only as fresh as this sync, which happens on boot, on visibility change,
+    // and when settings change. Copy can therefore lag the real board a little.
+    const boardTag = computeBoardTag(useStore.getState().state);
     const res = await fetch(`${base}/register`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ subscription: sub.toJSON(), times, random }),
+      body: JSON.stringify({ subscription: sub.toJSON(), times, random, boardTag }),
     });
     if (!res.ok) throw new Error(`register failed (${res.status})`);
 
     // Let the service worker re-register itself if the browser rotates the sub.
-    await idbSet(IDB_PUSH_KEY, { base, times, random }).catch(() => {});
+    await idbSet(IDB_PUSH_KEY, { base, times, random, boardTag }).catch(() => {});
     await idbSet(IDB_PUSH_URL_KEY, base).catch(() => {});
 
     if (announce) toast("Push is set up. Check-ins will arrive even when closed.", "gain");

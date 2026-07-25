@@ -8,6 +8,21 @@ export function todayStr(d: Date = new Date()): string {
   return `${y}-${m}-${day}`;
 }
 
+/** yyyy-mm-dd for a day offset from a reference date. */
+export function shiftDays(from: Date, delta: number): string {
+  const d = new Date(from);
+  d.setDate(d.getDate() + delta);
+  return todayStr(d);
+}
+
+/** Whole days between a yyyy-mm-dd and the reference date. */
+export function daysSince(date: string, now: Date = new Date()): number {
+  const then = new Date(date + "T00:00:00").getTime();
+  if (Number.isNaN(then)) return Number.MAX_SAFE_INTEGER;
+  const ref = new Date(todayStr(now) + "T00:00:00").getTime();
+  return Math.round((ref - then) / 86_400_000);
+}
+
 export function isDailyActiveOn(daily: Daily, d: Date): boolean {
   if (!daily.repeatDays || daily.repeatDays.length === 0) return true;
   return daily.repeatDays.includes(d.getDay());

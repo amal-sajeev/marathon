@@ -99,9 +99,13 @@ Then paste the printed `https://rpgtask-push.<you>.workers.dev` URL into
 **Settings → Push server URL** and make sure check-ins are enabled with
 notification permission granted. The Worker runs every minute, matches your
 times (converted to UTC), and sends a push; tapping it opens the app and starts
-Leela's check-in. Only the opaque push endpoint is stored server-side — your
-tasks never leave your device. Note: the AI conversation itself still runs in
-the app, so tapping the notification is what kicks it off.
+Leela's check-in. Note: the AI conversation itself still runs in the app, so
+tapping the notification is what kicks it off.
+
+What the Worker stores: the opaque push endpoint and its keys, your check-in
+times in UTC, the spontaneous window, and one coarse board tag (`overdue`,
+`quiet`, `streak-risk`, `all-clear`, `comeback`, `missed-checkin`) so the copy
+can suit the situation. No task titles, counts, or dates ever leave your device.
 
 ## Deploying to GitHub Pages
 

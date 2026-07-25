@@ -271,6 +271,39 @@ select {
   text-transform: uppercase;
   color: var(--text-dim);
   margin-top: 1px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Day streak. Deliberately amber rather than the cyan used for level, rank and
+   the bond glow, so momentum and closeness never read as the same meter. */
+.streak {
+  margin-left: auto;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font: inherit;
+  cursor: pointer;
+  background: rgba(255, 157, 60, 0.12);
+  border: 1px solid rgba(255, 157, 60, 0.4);
+  color: var(--accent);
+}
+.streak__glyph { font-size: 8px; }
+.streak--live { animation: streak-breathe 3.2s ease-in-out infinite; }
+/* A broken streak goes grey rather than disappearing: the gap is the point. */
+.streak--cold {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.14);
+  color: var(--text-faint);
+}
+
+@keyframes streak-breathe {
+  0%, 100% { box-shadow: 0 0 0 rgba(255, 157, 60, 0); }
+  50% { box-shadow: 0 0 10px rgba(255, 157, 60, 0.45); }
 }
 
 .hero__name {

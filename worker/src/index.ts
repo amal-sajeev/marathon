@@ -37,7 +37,22 @@ interface SubRecord {
   randomTimes?: string[];
   /** which random slots already fired on randomDay. */
   randomFired?: Record<string, boolean>;
+  /** coarse board state from the last client sync, used to pick copy. */
+  boardTag?: BoardTag | null;
 }
+
+/**
+ * A coarse description of the board, sent by the client so the copy can match
+ * the situation. Deliberately a single enum and never task text: the Worker
+ * should hold as little about the user as it can while still being useful.
+ */
+type BoardTag =
+  | "overdue"
+  | "quiet"
+  | "streak-risk"
+  | "all-clear"
+  | "comeback"
+  | "missed-checkin";
 
 /** Rotating, in-character bodies for spontaneous pings. */
 const SPONTANEOUS_BODIES = [
@@ -51,8 +66,50 @@ const SPONTANEOUS_BODIES = [
   "Just making sure you haven't been swallowed by your to-dos.",
 ];
 
-function pickBody(): string {
-  return SPONTANEOUS_BODIES[Math.floor(Math.random() * SPONTANEOUS_BODIES.length)];
+/**
+ * Copy chosen by board state. Only as fresh as the last client sync, so these
+ * stay general enough to survive being a few hours stale.
+ */
+const TAGGED_BODIES: Record<BoardTag, string[]> = {
+  overdue: [
+    "Something on your list has gone past due. Want to move it or knock it out?",
+    "You've got an overdue one sitting there. I can reschedule it if today isn't the day.",
+    "That thing you said you'd do. It's still waiting. No judgement, just noting it.",
+  ],
+  quiet: [
+    "Board's been quiet. Want to put one small thing on it?",
+    "Nothing moving today. Give me one thing worth doing and I'll set it up.",
+    "It's very still in here. What should we line up?",
+  ],
+  "streak-risk": [
+    "Your streak's still alive, but today isn't done yet.",
+    "One clear day keeps the run going. You've got time.",
+    "Don't let today be the one that breaks it.",
+  ],
+  "all-clear": [
+    "Board's clear. I'm genuinely impressed, and I don't say that often.",
+    "Everything's done. Go and enjoy the rest of it.",
+    "Nothing left on the list. That's a good day's work.",
+  ],
+  comeback: [
+    "Good to see you moving again. Keep it gentle today.",
+    "You're back at it. That's the hard part done.",
+    "Picking it up after a gap is harder than starting. Nice.",
+  ],
+  "missed-checkin": [
+    "I waited. I guess you're busy. I'll be here.",
+    "It's been a while. I was thinking about that thing we set up for today.",
+    "You didn't come by. I'd rather you had.",
+  ],
+};
+
+function pickFrom(list: string[]): string {
+  return list[Math.floor(Math.random() * list.length)];
+}
+
+function pickBody(tag?: BoardTag | null): string {
+  const tagged = tag ? TAGGED_BODIES[tag] : undefined;
+  return pickFrom(tagged?.length ? tagged : SPONTANEOUS_BODIES);
 }
 
 function corsHeaders(env: Env): Record<string, string> {
@@ -194,6 +251,7 @@ export default {
         subscription?: PushTarget;
         times?: string[];
         random?: RandomConfig | null;
+        boardTag?: BoardTag | null;
       };
       try {
         payload = await request.json();
@@ -214,6 +272,7 @@ export default {
         randomDay: prev?.randomDay,
         randomTimes: prev?.randomTimes,
         randomFired: prev?.randomFired,
+        boardTag: payload.boardTag ?? null,
       };
       await env.SUBS.put(sub.endpoint, JSON.stringify(rec));
       await addToIndex(env, sub.endpoint);
@@ -310,7 +369,7 @@ export default {
           !rec.randomFired?.[cur]
         ) {
           const result = await sendPush(env, rec.subscription, {
-            body: pickBody(),
+            body: pickBody(rec.boardTag),
             type: "spontaneous",
           });
           if (result === "gone") {
