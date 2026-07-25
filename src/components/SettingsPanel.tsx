@@ -279,6 +279,28 @@ export function SettingsPanel() {
               <span>Nightly debrief (moon button after 8pm)</span>
             </label>
 
+            <label className="field__label" style={{ marginTop: 14, display: "block" }}>
+              How much Leela reacts
+            </label>
+            <div className="hint" style={{ marginTop: 0, marginBottom: 8 }}>
+              How a day goes affects her mood either way. This is about how much
+              of the bad half she shows you. None of it starts until you've known
+              each other a while.
+            </div>
+            <select
+              className="input"
+              value={settings.reactiveMood ?? "full"}
+              onChange={(e) =>
+                setSettings({
+                  reactiveMood: e.target.value as "off" | "gentle" | "full",
+                })
+              }
+            >
+              <option value="full">Full - she'll say when she's disappointed</option>
+              <option value="gentle">Gentle - it shows on her face, nothing more</option>
+              <option value="off">Off - she keeps it to herself</option>
+            </select>
+
             <label
               className="field__label"
               style={{ marginTop: 12, display: "block" }}

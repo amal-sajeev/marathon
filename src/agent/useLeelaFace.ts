@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useStore } from "../state/store";
-import { crackIntensity, lockedEmotion, negativeExpressionActive } from "../game/mood";
+import { crackIntensity, guiltActive, lockedEmotion, negativeExpressionActive } from "../game/mood";
 import { isEmotion, type Emotion } from "./emotions";
 
 /**
@@ -40,6 +40,6 @@ export function useCrack(): number {
     return () => window.clearInterval(id);
   }, [damageAt]);
 
-  if (!negativeExpressionActive(bond, settings)) return 0;
+  if (!guiltActive(bond, settings)) return 0;
   return crackIntensity(mood);
 }

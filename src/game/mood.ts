@@ -7,8 +7,8 @@ export const MOOD_BASELINE = 60;
 export const MOOD_LOW = 40;
 
 /**
- * Whether Leela is allowed to *show* a bad mood: the lingering portrait, the
- * cracked glass, the disappointed opener, the guilt notifications.
+ * Whether Leela is allowed to *show* a bad mood at all: the resting face stays
+ * fallen for the day after one goes badly.
  *
  * The arithmetic in cron always runs; only the expression is gated. At stage 0
  * she has no standing to be hurt yet, and a wounded reaction from someone you
@@ -19,9 +19,18 @@ export const MOOD_LOW = 40;
  * The positive half is never gated by this.
  */
 export function negativeExpressionActive(bond: Bond, settings: Settings): boolean {
-  const mode = settings.reactiveMood ?? "full";
-  if (mode !== "full") return false;
+  if ((settings.reactiveMood ?? "full") === "off") return false;
   return bondStage(bond).index >= 1;
+}
+
+/**
+ * The sharper end of it: cracked glass, the disappointed opener, the guilt
+ * notifications. On "gentle" she still wears the day on her face but never
+ * confronts anyone about it.
+ */
+export function guiltActive(bond: Bond, settings: Settings): boolean {
+  if ((settings.reactiveMood ?? "full") !== "full") return false;
+  return negativeExpressionActive(bond, settings);
 }
 
 /** A locked expression only counts while it hasn't expired. */

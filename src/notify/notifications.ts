@@ -5,7 +5,7 @@ import type { Daily, Settings, Todo } from "../state/types";
 import { maybeWriteRecap, runCheckIn, runWeeklyReview } from "../agent/checkin";
 import { initEventPings } from "./events";
 import { computeBoardTag } from "./boardTag";
-import { negativeExpressionActive } from "../game/mood";
+import { guiltActive } from "../game/mood";
 
 const FIRED_KEY = "rpgtask:lastCheckIns";
 /** How long after a scheduled time we still consider it worth firing. */
@@ -582,7 +582,7 @@ const LATE_BODIES = [
 function lapsedCheckIn(now: Date = new Date()): boolean {
   const { settings, state } = useStore.getState();
   if (!settings.checkInsEnabled) return false;
-  if (!negativeExpressionActive(state.bond, settings)) return false;
+  if (!guiltActive(state.bond, settings)) return false;
 
   const talked = state.bond.lastTalkedAt
     ? new Date(state.bond.lastTalkedAt).getTime()
@@ -617,7 +617,7 @@ function maybeRunDue(): void {
       // Well past the hour, a board summary reads like a robot. She noticed.
       const late =
         delta > LATE_GUILT_MS &&
-        negativeExpressionActive(
+        guiltActive(
           useStore.getState().state.bond,
           useStore.getState().settings,
         );

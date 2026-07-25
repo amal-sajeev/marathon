@@ -186,6 +186,26 @@ export interface Engagement {
   lastDebriefDate?: string;
   /** yyyy-mm-dd of the last Sunday letter Leela wrote. */
   lastSundayLetter?: string;
+  /** consecutive days they've actually talked to her, not just opened the app */
+  convoStreak?: number;
+  /** yyyy-mm-dd of the last day a conversation counted toward that */
+  lastConvoDate?: string;
+  /** an unopened box from her, and the moment it stops being available */
+  boxPending?: boolean;
+  boxExpiresAt?: string;
+  /** an open bet on their own streak */
+  wager?: StreakWager;
+}
+
+/**
+ * Gold staked against reaching a streak milestone, doubled if they get there
+ * and lost if they don't. Deliberately gold rather than health: a bet that can
+ * cost you a level is a punishment, not a nudge.
+ */
+export interface StreakWager {
+  stake: number;
+  target: number;
+  placedAt: string;
 }
 
 /**

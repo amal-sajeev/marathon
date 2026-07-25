@@ -1,7 +1,7 @@
 import type { Settings } from "../state/types";
 import { useStore } from "../state/store";
 import { bondStage } from "../game/bond";
-import { MOOD_LOW, moodLabel, negativeExpressionActive } from "../game/mood";
+import { MOOD_LOW, guiltActive, moodLabel } from "../game/mood";
 import { availableLore } from "../game/lore";
 import { describeGoal, openRequest, requestProgress } from "../game/requests";
 import { todayStr } from "../state/cron";
@@ -189,7 +189,7 @@ function moodLines(unattended: boolean): string[] {
   if (unattended) return out;
 
   const today = todayStr();
-  const canShow = negativeExpressionActive(state.bond, settings);
+  const canShow = guiltActive(state.bond, settings);
   if (canShow && mood.value < MOOD_LOW && mood.missedTask && mood.ackDate !== today) {
     out.push(
       `- For this one opening message only, set aside the composure guidance above: you are openly hurt that they didn't get to "${mood.missedTask}". Name it, say it once, then let it go and return to your usual register for the rest of this conversation. Never cruel, never moralizing, never sarcastic about it, and never raised again later in this session.`,

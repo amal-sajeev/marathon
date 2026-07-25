@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { applyDamage, applyGain, reviveIfDead, spendGold } from "./scoring";
-import { runCron, todayStr } from "./cron";
+import { runCron, shiftDays, todayStr } from "./cron";
 import type {
   Bond,
   BondRequest,
@@ -9,6 +9,7 @@ import type {
   Daily,
   DayRecord,
   Difficulty,
+  Engagement,
   Followup,
   GameState,
   Habit,
@@ -24,11 +25,12 @@ import type {
   TaskType,
   Todo,
 } from "./types";
-import { CONSUMABLES, cosmeticById } from "../game/cosmetics";
+import { CONSUMABLES, COSMETICS, cosmeticById } from "../game/cosmetics";
 import { BOND_STAGES, bondStage } from "../game/bond";
 import { MOOD_BASELINE, MOOD_LOW } from "../game/mood";
 import { loreById } from "../game/lore";
 import { requestProgress } from "../game/requests";
+import { buzzGain, buzzMilestone, glimmer } from "../game/feedback";
 
 const KEEPSAKE_CAP = 40;
 const DIARY_CAP = 400;
@@ -324,6 +326,12 @@ interface StoreState extends UIState {
   markMoodAck: () => void;
   clearRelief: () => void;
 
+  // rewards
+  openMysteryBox: () => { text: string } | null;
+  expireMysteryBox: () => void;
+  placeWager: (stake: number, target: number) => boolean;
+  cancelWager: () => void;
+
   // things she asks of them, and what she gives back
   proposeRequest: (
     goal: BondRequest["goal"],
@@ -579,6 +587,7 @@ export const useStore = create<StoreState>((set, get) => ({
     if (dir === "up") {
       const res = applyGain(s.state.character, habit.difficulty);
       s.pushToast(`+${res.xpGained} XP, +${res.goldGained} gold`, "gain");
+      celebrate(res.leveledUp);
       if (res.leveledUp) {
         set({ celebrateLevel: res.character.level });
         s.pushToast(`Level ${res.character.level}!`, "level");
@@ -651,6 +660,7 @@ export const useStore = create<StoreState>((set, get) => ({
       s.pushToast(`+${res.xpGained} XP, +${res.goldGained} gold`, "gain", {
         undo: true,
       });
+      celebrate(res.leveledUp);
       if (res.leveledUp) {
         set({ celebrateLevel: res.character.level });
         s.pushToast(`Level ${res.character.level}!`, "level");
@@ -705,6 +715,7 @@ export const useStore = create<StoreState>((set, get) => ({
       s.pushToast(`+${res.xpGained} XP, +${res.goldGained} gold`, "gain", {
         undo: true,
       });
+      celebrate(res.leveledUp);
       if (res.leveledUp) {
         set({ celebrateLevel: res.character.level });
         s.pushToast(`Level ${res.character.level}!`, "level");
@@ -1114,6 +1125,82 @@ export const useStore = create<StoreState>((set, get) => ({
       },
     })),
 
+  openMysteryBox: () => {
+    const s = get();
+    const eng = s.state.engagement;
+    if (!eng.boxPending || boxExpired(eng)) return null;
+
+    // Something they don't have yet, if there's anything left to want.
+    const locked = COSMETICS.filter(
+      (c) => c.cost > 0 && !s.state.cosmetics.owned.includes(c.id),
+    );
+    let character = s.state.character;
+    let cosmetics = s.state.cosmetics;
+    let text: string;
+    if (locked.length > 0) {
+      const prize = locked[Math.floor(Math.random() * locked.length)];
+      cosmetics = { ...cosmetics, owned: [...cosmetics.owned, prize.id] };
+      text = prize.label;
+    } else {
+      const gold = 60 + Math.floor(Math.random() * 90);
+      character = { ...character, gold: character.gold + gold };
+      text = `${gold} gold`;
+    }
+
+    set((st) => ({
+      state: {
+        ...st.state,
+        character,
+        cosmetics,
+        engagement: { ...st.state.engagement, boxPending: false, boxExpiresAt: undefined },
+      },
+    }));
+    return { text };
+  },
+
+  expireMysteryBox: () => {
+    if (!boxExpired(get().state.engagement)) return;
+    set((s) => ({
+      state: {
+        ...s.state,
+        engagement: { ...s.state.engagement, boxPending: false, boxExpiresAt: undefined },
+      },
+    }));
+  },
+
+  placeWager: (stake, target) => {
+    const s = get();
+    if (s.state.engagement.wager) return false;
+    if (!Number.isFinite(stake) || stake < 1) return false;
+    if (s.state.character.gold < stake) return false;
+    // Betting on a milestone already passed isn't a bet.
+    if (s.state.stats.currentStreak >= target) return false;
+
+    set((st) => ({
+      state: {
+        ...st.state,
+        character: { ...st.state.character, gold: st.state.character.gold - stake },
+        engagement: {
+          ...st.state.engagement,
+          wager: { stake: Math.round(stake), target, placedAt: nowIso() },
+        },
+      },
+    }));
+    return true;
+  },
+
+  cancelWager: () => {
+    const w = get().state.engagement.wager;
+    if (!w) return;
+    set((s) => ({
+      state: {
+        ...s.state,
+        character: { ...s.state.character, gold: s.state.character.gold + w.stake },
+        engagement: { ...s.state.engagement, wager: undefined },
+      },
+    }));
+  },
+
   proposeRequest: (goal, reward, loreId) => {
     const st = get().state;
     // One at a time. Two open promises stop being promises.
@@ -1201,7 +1288,35 @@ export const useStore = create<StoreState>((set, get) => ({
       set({ fallen: rev.character.level });
     }
 
-    set({ state: { ...state, character: rev.character, stats } });
+    // The streak is decided here, so this is where a bet on it is settled.
+    let engagement = state.engagement;
+    let settled: "won" | "lost" | null = null;
+    const bet = engagement.wager;
+    let gold = rev.character.gold;
+    if (bet) {
+      if (stats.currentStreak >= bet.target) {
+        gold += bet.stake * 2;
+        settled = "won";
+      } else if (stats.currentStreak === 0) {
+        settled = "lost";
+      }
+      if (settled) engagement = { ...engagement, wager: undefined };
+    }
+
+    // A box they never opened goes away, which is the point of the window.
+    if (boxExpired(engagement)) {
+      engagement = { ...engagement, boxPending: false, boxExpiresAt: undefined };
+    }
+
+    set({
+      state: { ...state, character: { ...rev.character, gold }, stats, engagement },
+    });
+
+    if (settled === "won") {
+      s.pushToast(`Your streak held. The wager pays ${bet!.stake * 2} gold.`, "gain");
+    } else if (settled === "lost") {
+      s.pushToast(`Streak broken. The ${bet!.stake} gold you staked is gone.`, "loss");
+    }
 
     if (rev.died) {
       s.pushToast("You fell overnight. Lost a level and some gold.", "loss");
@@ -1306,6 +1421,51 @@ export const useStore = create<StoreState>((set, get) => ({
           interactions: s.state.bond.interactions + 1,
           lastTalkedAt: nowIso(),
         },
+        engagement: withConvoDay(s.state.engagement),
       },
     })),
 }));
+
+/**
+ * The sensory half-second after a win: her portrait pulses, the bar catches
+ * the light, the phone buzzes. Silent when the reactive layer is off, since
+ * someone who turned that off doesn't want the fanfare either.
+ */
+function celebrate(leveledUp: boolean): void {
+  if (useStore.getState().settings.reactiveMood === "off") return;
+  glimmer();
+  if (leveledUp) buzzMilestone();
+  else buzzGain();
+}
+
+const BOX_WINDOW_MS = 24 * 60 * 60 * 1000;
+const BOX_EVERY = 3;
+
+/**
+ * Count today as a day they talked to her, and hand over a box every third one
+ * in a row.
+ *
+ * Tied to conversation rather than app opens, because opening the app to tick
+ * a box off is already rewarded elsewhere and this is meant to be about her.
+ */
+function withConvoDay(eng: Engagement, now: Date = new Date()): Engagement {
+  const today = todayStr(now);
+  if (eng.lastConvoDate === today) return eng;
+
+  const yesterday = shiftDays(now, -1);
+  const convoStreak = eng.lastConvoDate === yesterday ? (eng.convoStreak ?? 0) + 1 : 1;
+  const next: Engagement = { ...eng, convoStreak, lastConvoDate: today };
+
+  // An unopened box doesn't stack; it just gets a fresh window.
+  if (convoStreak % BOX_EVERY === 0) {
+    next.boxPending = true;
+    next.boxExpiresAt = new Date(now.getTime() + BOX_WINDOW_MS).toISOString();
+  }
+  return next;
+}
+
+/** True once the window on an unopened box has closed. */
+export function boxExpired(eng: Engagement, now: Date = new Date()): boolean {
+  if (!eng.boxPending || !eng.boxExpiresAt) return false;
+  return new Date(eng.boxExpiresAt).getTime() <= now.getTime();
+}

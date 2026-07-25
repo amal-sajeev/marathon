@@ -90,6 +90,7 @@ function loadSettings(): Settings {
         spontaneousStart: parsed.spontaneousStart ?? "10:00",
         spontaneousEnd: parsed.spontaneousEnd ?? "21:00",
         nightlyDebrief: parsed.nightlyDebrief ?? true,
+        reactiveMood: parsed.reactiveMood ?? "full",
       };
     }
   } catch {
@@ -108,6 +109,7 @@ function loadSettings(): Settings {
     spontaneousStart: "10:00",
     spontaneousEnd: "21:00",
     nightlyDebrief: true,
+    reactiveMood: "full",
   };
 }
 
