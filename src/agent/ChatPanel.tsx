@@ -2,8 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "../state/store";
 import { AssetImage } from "../components/AssetImage";
 import { Markdown } from "../components/Markdown";
-import { runAgentTurn, toApiHistory, type ChatMessage } from "./mistral";
-import { nextId, useChat, type VisibleMessage } from "./chatStore";
+import { runAgentTurn } from "./mistral";
+import { buildConversationHistory } from "./summarize";
+import { nextId, useChat, type NewMessage } from "./chatStore";
 import { FaceAvatar } from "./FaceAvatar";
 import { RankBadge } from "../components/RankBadge";
 import { runNightlyDebrief } from "./checkin";
@@ -155,21 +156,15 @@ export function ChatPanel() {
     if (!content || busy) return;
     setText("");
 
-    const history: { role: "user" | "assistant"; content: string }[] = messages
-      .filter((m) => m.role !== "error")
-      .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
-
-    const userMsg: VisibleMessage = { id: nextId(), role: "user", content };
+    const userMsg: NewMessage = { id: nextId(), role: "user", content };
     add(userMsg);
-
-    const apiHistory: ChatMessage[] = toApiHistory([
-      ...history,
-      { role: "user", content },
-    ]);
 
     setBusy(true);
     try {
-      const result = await runAgentTurn(settings, apiHistory);
+      const result = await runAgentTurn(
+        settings,
+        await buildConversationHistory(settings),
+      );
       const { emotion, text, chips } = extractEmotion(result.content || "");
       add({
         id: nextId(),

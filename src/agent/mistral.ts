@@ -116,10 +116,10 @@ function buildUrl(settings: Settings): string {
   return p.replace(/\/+$/, "") + "/" + ENDPOINT;
 }
 
-async function callApi(
+async function postChat(
   settings: Settings,
-  messages: ChatMessage[],
-): Promise<ChatMessage> {
+  body: Record<string, unknown>,
+): Promise<unknown> {
   let res: Response;
   try {
     res = await fetch(buildUrl(settings), {
@@ -129,13 +129,7 @@ async function callApi(
         Authorization: `Bearer ${settings.apiKey}`,
         Accept: "application/json",
       },
-      body: JSON.stringify({
-        model: settings.model || "mistral-small-latest",
-        messages,
-        tools: TOOL_SPECS,
-        tool_choice: "auto",
-        temperature: 0.6,
-      }),
+      body: JSON.stringify(body),
     });
   } catch (err) {
     throw new Error(
@@ -151,8 +145,21 @@ async function callApi(
     const text = await res.text().catch(() => "");
     throw new Error(`Mistral error ${res.status}. ${text.slice(0, 200)}`);
   }
+  return res.json();
+}
 
-  const data = await res.json();
+async function callApi(
+  settings: Settings,
+  messages: ChatMessage[],
+): Promise<ChatMessage> {
+  const data = (await postChat(settings, {
+    model: settings.model || "mistral-small-latest",
+    messages,
+    tools: TOOL_SPECS,
+    tool_choice: "auto",
+    temperature: 0.6,
+  })) as { choices?: { message?: { content?: string; tool_calls?: ToolCall[] } }[] };
+
   const msg = data?.choices?.[0]?.message;
   if (!msg) throw new Error("Mistral returned an empty response.");
   return {
@@ -160,6 +167,25 @@ async function callApi(
     content: msg.content ?? "",
     tool_calls: msg.tool_calls,
   };
+}
+
+/**
+ * One completion with no tools, for bookkeeping the user never sees. Pinned to
+ * the small model regardless of the configured one: this runs on a schedule the
+ * user didn't ask for, so it shouldn't bill at whatever rate they picked for
+ * conversation.
+ */
+export async function completePlain(
+  settings: Settings,
+  messages: ChatMessage[],
+  temperature = 0.2,
+): Promise<string> {
+  const data = (await postChat(settings, {
+    model: "mistral-small-latest",
+    messages,
+    temperature,
+  })) as { choices?: { message?: { content?: string } }[] };
+  return data?.choices?.[0]?.message?.content ?? "";
 }
 
 /**
@@ -220,9 +246,3 @@ export async function runAgentTurn(
   };
 }
 
-/** Strip system/tool bookkeeping down to what the UI shows as a conversation. */
-export function toApiHistory(
-  visible: { role: "user" | "assistant"; content: string }[],
-): ChatMessage[] {
-  return visible.map((m) => ({ role: m.role, content: m.content }));
-}

@@ -209,6 +209,13 @@ export interface Keepsake {
 }
 
 export interface GameState {
+  /**
+   * Stable identity for this save, so device-local data (the chat transcript,
+   * rolling backups) can be scoped to it and never bleed between characters.
+   * Legacy saves derive one from createdAt rather than a fresh random value, so
+   * the same file opened on two devices resolves to the same id.
+   */
+  saveId: string;
   character: Character;
   tasks: Task[];
   stats: Stats;

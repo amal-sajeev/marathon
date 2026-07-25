@@ -1,7 +1,8 @@
 import { get as idbGet, set as idbSet } from "idb-keyval";
-import { useStore, normalizeState } from "../state/store";
+import { useStore, normalizeState, deriveSaveId } from "../state/store";
 import { runCron } from "../state/cron";
 import { initNotifications } from "../notify/notifications";
+import { initChatPersistence } from "../agent/chatPersistence";
 import type { GameState, Settings } from "../state/types";
 import { decodeSave, encodeSave } from "./rpgsave";
 import {
@@ -31,6 +32,8 @@ const DEFAULT_CHECK_IN_TIMES = ["09:00", "20:00"];
 export interface BackupEntry {
   savedAt: string;
   data: string;
+  /** which save this snapshot belongs to; absent on entries written before saveId */
+  saveId?: string;
 }
 
 /** Is timestamp a strictly newer than b? */
@@ -40,18 +43,30 @@ function newer(a?: string, b?: string): boolean {
   return new Date(a).getTime() > new Date(b).getTime();
 }
 
-export async function listBackups(): Promise<BackupEntry[]> {
+async function allBackups(): Promise<BackupEntry[]> {
   const arr = (await idbGet(BACKUPS_KEY)) as BackupEntry[] | undefined;
   return Array.isArray(arr) ? arr : [];
 }
 
-async function pushBackup(encoded: string): Promise<void> {
-  const arr = await listBackups();
+/**
+ * Snapshots for the save that's currently loaded. Restoring another character's
+ * backup would replace this save's state and then autosave it straight into
+ * this save's file, so they're filtered out rather than merely labelled.
+ * Entries predating saveId are kept, since they can only have come from the
+ * single save that existed before the upgrade.
+ */
+export async function listBackups(): Promise<BackupEntry[]> {
+  const active = deriveSaveId(useStore.getState().state);
+  return (await allBackups()).filter((e) => !e.saveId || e.saveId === active);
+}
+
+async function pushBackup(encoded: string, saveId: string): Promise<void> {
+  const arr = await allBackups();
   const last = arr[arr.length - 1];
   if (last && Date.now() - new Date(last.savedAt).getTime() < BACKUP_MIN_INTERVAL) {
     return;
   }
-  arr.push({ savedAt: new Date().toISOString(), data: encoded });
+  arr.push({ savedAt: new Date().toISOString(), data: encoded, saveId });
   await idbSet(BACKUPS_KEY, arr.slice(-MAX_BACKUPS));
 }
 
@@ -111,7 +126,7 @@ async function writeToDisk(state: GameState): Promise<void> {
 
   // Always keep the in-browser backup safe first, plus a rolling snapshot.
   await idbSet(STATE_BACKUP_KEY, stamped);
-  void pushBackup(encoded);
+  void pushBackup(encoded, deriveSaveId(stamped));
 
   const handle = await getStoredHandle();
   if (!handle) {
@@ -147,6 +162,17 @@ function chooseState(
   lastSynced: string | undefined,
 ): { state: GameState; source: "file" | "backup" } {
   if (!backup) return { state: fileState, source: "file" };
+
+  // The backup is a single slot holding whichever save was last active. If the
+  // linked file is a different save (switched saves, then closed before the
+  // first autosave), their updatedAt stamps are unrelated and comparing them
+  // could adopt the other character and write it into this file. Trust the file.
+  const fileId = deriveSaveId(fileState);
+  const backupId = deriveSaveId(backup);
+  if (fileId && backupId && fileId !== backupId) {
+    return { state: fileState, source: "file" };
+  }
+
   const bU = backup.updatedAt;
   const fU = fileState.updatedAt;
   const backupChanged = !!bU && bU !== lastSynced;
@@ -278,6 +304,10 @@ export async function initPersistence(): Promise<void> {
     };
     window.addEventListener("pointerdown", onGesture, { once: true });
   }
+
+  // Restore the conversation for whichever save just loaded, and keep it in
+  // step if the user switches saves later.
+  initChatPersistence();
 
   // Wire proactive check-in notifications (best-effort, no backend).
   initNotifications();

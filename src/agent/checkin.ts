@@ -5,6 +5,7 @@ import { runAgentTurn, type ChatMessage } from "./mistral";
 import { nextId, useChat } from "./chatStore";
 import { extractEmotion } from "./emotions";
 import { softPredictions } from "./predictions";
+import { buildConversationHistory } from "./summarize";
 
 const CHECKIN_DIRECTIVE = `[AUTOMATED CHECK-IN]
 This is a scheduled check-in you initiated, not a reply to the user. Open a short, natural conversation to help them stay on track. Stay fully in character.
@@ -21,7 +22,8 @@ Rules:
 - Keep each message to a sentence or two. Conversational, not a checklist dump.
 - Do not mark anything done or add anything yet - just ask. When the user replies, use your tools (complete_daily, complete_todo, score_habit, add_*) to record what they tell you.
 - Use the state snapshot below to be specific (reference real titles or nicknames), but do not paste it back verbatim.
-- If you share a codeword or in-joke, use it lightly once at most.`;
+- If you share a codeword or in-joke, use it lightly once at most.
+- End the LAST message (and only that one) with a [[chips: ...]] tag giving two or three honest one-tap answers to whatever you just asked.`;
 
 function timeOfDayLabel(now: Date): string {
   const h = now.getHours();
@@ -165,14 +167,12 @@ export async function runUserMessage(content: string): Promise<void> {
     return;
   }
 
-  const history: ChatMessage[] = useChat
-    .getState()
-    .messages.filter((m) => m.role !== "error")
-    .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
-
   chat.setBusy(true);
   try {
-    const result = await runAgentTurn(settings, history);
+    const result = await runAgentTurn(
+      settings,
+      await buildConversationHistory(settings),
+    );
     const { emotion, text: reply, chips } = extractEmotion(result.content || "");
     useChat.getState().add({
       id: nextId(),
@@ -205,7 +205,8 @@ Cover these across 3 to 4 SHORT, separate messages:
 Rules:
 - Separate each message with a line containing only three dashes: ---
 - Keep each message to a sentence or two. Reflective and encouraging, never a report.
-- Do not add or change anything yet (except the Sunday letter tool). When they reply, use your tools.`;
+- Do not add or change anything yet (except the Sunday letter tool). When they reply, use your tools.
+- End the LAST message (and only that one) with a [[chips: ...]] tag offering two or three one-tap answers about what they want next week to look like.`;
 
 const DEBRIEF_DIRECTIVE = `[NIGHTLY DEBRIEF]
 This is a short evening ritual you initiated, not a reply to the user. Keep it intimate and brief. Stay fully in character and within your current closeness stage.
@@ -219,7 +220,8 @@ Rules:
 - Separate each message with a line containing only three dashes: ---
 - Keep each message to a sentence or two.
 - If a soft prediction fits, raise it once as an offer.
-- Use nicknames / codeword only if they already exist and it feels natural.`;
+- Use nicknames / codeword only if they already exist and it feels natural.
+- End the LAST message (and only that one) with a [[chips: ...]] tag. It's late and they're tired, so make answering a single tap: how the day felt, or yes/no to parking something for tomorrow.`;
 
 /** Days elapsed since a yyyy-mm-dd date string. */
 function daysAgo(date: string): number {

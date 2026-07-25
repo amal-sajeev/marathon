@@ -21,6 +21,8 @@ import {
   type PushStatus,
 } from "../notify/notifications";
 import { runCheckIn } from "../agent/checkin";
+import { useChat } from "../agent/chatStore";
+import { clearChat } from "../agent/chatPersistence";
 
 const MODELS = [
   { id: "mistral-small-latest", label: "Mistral Small (fast, cheap)" },
@@ -42,6 +44,7 @@ export function SettingsPanel() {
   const memories = useStore((s) => s.state.memories);
   const addMemory = useStore((s) => s.addMemory);
   const deleteMemory = useStore((s) => s.deleteMemory);
+  const chatCount = useChat((s) => s.messages.length);
 
   const [showKey, setShowKey] = useState(false);
   const [newMemory, setNewMemory] = useState("");
@@ -484,6 +487,33 @@ export function SettingsPanel() {
                 }}
               >
                 Add
+              </button>
+            </div>
+          </div>
+
+          <div className="field">
+            <label className="field__label">Conversation</label>
+            <div className="hint" style={{ marginTop: 0, marginBottom: 8 }}>
+              Your chat with Leela is kept on this device and tied to this save,
+              so loading a different save file shows that save's conversation.
+              Memories and her diary live in the save itself and aren't affected.
+            </div>
+            <div className="row" style={{ alignItems: "center" }}>
+              <span style={{ flex: 1, fontSize: 13 }}>
+                {chatCount === 0
+                  ? "Nothing stored yet."
+                  : `${chatCount} message${chatCount === 1 ? "" : "s"} kept.`}
+              </span>
+              <button
+                className="btn btn--ghost btn--sm"
+                style={{ flex: "0 0 auto" }}
+                disabled={chatCount === 0}
+                onClick={() => {
+                  void clearChat();
+                  pushToast("Conversation cleared", "info");
+                }}
+              >
+                Clear
               </button>
             </div>
           </div>

@@ -73,6 +73,7 @@ export function freshCosmetics(): Cosmetics {
 
 export function freshState(name?: string): GameState {
   return {
+    saveId: uid(),
     character: freshCharacter(name),
     tasks: [],
     stats: freshStats(),
@@ -91,10 +92,21 @@ export function freshState(name?: string): GameState {
   };
 }
 
+/**
+ * Identity of a save, tolerant of older files written before saveId existed.
+ * Falls back to createdAt rather than a random value so the same file opened on
+ * two devices agrees on its id, which conflict resolution depends on. Returns
+ * "" when neither is present, which callers read as "unknown, don't compare".
+ */
+export function deriveSaveId(state: Partial<GameState> | undefined): string {
+  return state?.saveId || state?.createdAt || "";
+}
+
 /** Ensure a loaded/older save has all required fields (forward migration). */
 export function normalizeState(state: GameState): GameState {
   return {
     ...state,
+    saveId: deriveSaveId(state) || uid(),
     character: {
       ...state.character,
       inventory: {
