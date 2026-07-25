@@ -1128,6 +1128,10 @@ select {
   width: 100%;
   height: 100%;
   overflow: hidden;
+  /* Her art has transparent edges. Without this the orb's cyan gradient and
+     whatever the bubble sits on show through and tint her differently on
+     every surface. */
+  background: #000;
 }
 
 /* Fractured glass over her portrait after a missed daily costs health. The

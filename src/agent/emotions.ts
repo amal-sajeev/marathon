@@ -10,6 +10,14 @@ export const EMOTIONS = [
   "surprised",
   "sad",
   "focused",
+  "determined",
+  "worried",
+  "shocked",
+  "laughing",
+  "serious",
+  "angry",
+  "shy",
+  "confident",
 ] as const;
 
 export type Emotion = (typeof EMOTIONS)[number];
@@ -65,11 +73,19 @@ export const NEUTRAL_SRC = facePath("neutral-1.webp");
 const VARIANT_COUNTS: Partial<Record<Emotion, number>> = {
   neutral: 2,
   happy: 1,
-  excited: 1,
-  thinking: 2,
-  surprised: 2,
-  sad: 1,
+  excited: 2,
+  thinking: 3,
+  surprised: 3,
+  sad: 2,
   focused: 1,
+  determined: 1,
+  worried: 1,
+  shocked: 1,
+  laughing: 1,
+  serious: 1,
+  angry: 1,
+  shy: 1,
+  confident: 1,
 };
 
 // Sources that 404'd once are remembered so we stop retrying them.
