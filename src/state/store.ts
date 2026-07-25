@@ -12,6 +12,7 @@ import type {
   GameState,
   Habit,
   Keepsake,
+  LeelaMood,
   Memory,
   MoodEntry,
   Reward,
@@ -24,6 +25,33 @@ import type {
 } from "./types";
 import { CONSUMABLES, cosmeticById } from "../game/cosmetics";
 import { BOND_STAGES } from "../game/bond";
+import { MOOD_BASELINE, MOOD_LOW } from "../game/mood";
+
+/** Mood is a 0..100 scale; every write goes through this. */
+export function clampMood(v: number): number {
+  return Math.max(0, Math.min(100, Math.round(v)));
+}
+
+/**
+ * Finishing something while she's low pulls her back up, releases the fallen
+ * resting face early, and arms the relief line for her next message.
+ *
+ * This is the counterweight to the settlement penalty: without it a bad day
+ * would hold her down until the next rollover no matter what the user did
+ * about it, which would make the whole thing feel like a punishment rather
+ * than something they can fix.
+ */
+function moodOnCompletion(mood: LeelaMood | undefined): LeelaMood {
+  const current = mood ?? { value: MOOD_BASELINE };
+  if (current.value >= MOOD_LOW) return current;
+  return {
+    ...current,
+    value: clampMood(current.value + 10),
+    lockedEmotion: undefined,
+    lockedUntil: undefined,
+    reliefPending: true,
+  };
+}
 
 export function uid(): string {
   return (
@@ -86,6 +114,8 @@ export function freshState(name?: string): GameState {
     engagement: { loginStreak: 0 },
     signature: freshSignature(),
     keepsakes: [],
+    leelaMood: { value: MOOD_BASELINE },
+    bondRequests: [],
     createdAt: nowIso(),
     lastCron: todayStr(),
     updatedAt: nowIso(),
@@ -142,6 +172,17 @@ export function normalizeState(state: GameState): GameState {
       bits: Array.isArray(state.signature?.bits) ? state.signature.bits : [],
     },
     keepsakes: Array.isArray(state.keepsakes) ? state.keepsakes : [],
+    leelaMood: {
+      value: clampMood(state.leelaMood?.value ?? MOOD_BASELINE),
+      lastSettled: state.leelaMood?.lastSettled,
+      reason: state.leelaMood?.reason,
+      lockedEmotion: state.leelaMood?.lockedEmotion,
+      lockedUntil: state.leelaMood?.lockedUntil,
+      ackDate: state.leelaMood?.ackDate,
+      reliefPending: state.leelaMood?.reliefPending,
+      damageAt: state.leelaMood?.damageAt,
+    },
+    bondRequests: Array.isArray(state.bondRequests) ? state.bondRequests : [],
     updatedAt: state.updatedAt ?? nowIso(),
   };
 }
@@ -287,6 +328,8 @@ export interface NewTaskInput {
   checklist?: string[];
   tags?: string[];
   remindAt?: string;
+  /** set by the agent's add_* tools so missing it weighs on her differently */
+  suggestedByLeela?: boolean;
 }
 
 /** Fold a day's activity into the rolling history, keeping the last ~150 days. */
@@ -320,6 +363,7 @@ function buildTask(input: NewTaskInput): Task {
     updatedAt: nowIso(),
     tags: input.tags,
     remindAt: input.remindAt,
+    suggestedByLeela: input.suggestedByLeela,
   };
   const checklist = (input.checklist ?? []).map((text) => ({
     id: uid(),
@@ -505,6 +549,7 @@ export const useStore = create<StoreState>((set, get) => ({
             habitsScored: st.state.stats.habitsScored + 1,
           },
           history: withDayLog(st.state.history, 1, res.xpGained),
+          leelaMood: moodOnCompletion(st.state.leelaMood),
           tasks: st.state.tasks.map((t) =>
             t.id === id
               ? ({ ...habit, value: habit.value + 1, countUp: habit.countUp + 1 })
@@ -582,6 +627,7 @@ export const useStore = create<StoreState>((set, get) => ({
           ),
         },
         history: withDayLog(st.state.history, willComplete ? 1 : -1, xpGained),
+        leelaMood: willComplete ? moodOnCompletion(st.state.leelaMood) : st.state.leelaMood,
         tasks: st.state.tasks.map((t) =>
           t.id === id
             ? ({
@@ -635,6 +681,7 @@ export const useStore = create<StoreState>((set, get) => ({
           ),
         },
         history: withDayLog(st.state.history, willComplete ? 1 : -1, xpGained),
+        leelaMood: willComplete ? moodOnCompletion(st.state.leelaMood) : st.state.leelaMood,
         tasks: st.state.tasks.map((t) =>
           t.id === id
             ? ({

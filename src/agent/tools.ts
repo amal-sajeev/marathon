@@ -597,6 +597,7 @@ export function runTool(
         difficulty: (args.difficulty as Difficulty) ?? "easy",
         repeatDays: args.repeatDays as number[] | undefined,
         checklist: args.checklist as string[] | undefined,
+        suggestedByLeela: true,
       });
       return { ok: true, created: summarizeTask(task) };
     }
@@ -608,6 +609,7 @@ export function runTool(
         difficulty: (args.difficulty as Difficulty) ?? "easy",
         dueDate: args.dueDate ? String(args.dueDate) : undefined,
         checklist: args.checklist as string[] | undefined,
+        suggestedByLeela: true,
       });
       return { ok: true, created: summarizeTask(task) };
     }

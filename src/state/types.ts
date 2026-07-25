@@ -19,6 +19,11 @@ export interface BaseTask {
   tags?: string[];
   /** optional reminder. Dailies use "HH:MM"; to-dos use an ISO datetime. */
   remindAt?: string;
+  /**
+   * Set when Leela created this rather than the user. Missing one of hers costs
+   * her mood more than missing one you set yourself.
+   */
+  suggestedByLeela?: boolean;
 }
 
 export interface Habit extends BaseTask {
@@ -202,9 +207,56 @@ export interface Signature {
 /** A lasting note or caption Leela leaves in the Service Record. */
 export interface Keepsake {
   id: string;
-  kind: "milestone" | "letter" | "ritual" | "other";
+  kind: "milestone" | "letter" | "ritual" | "diary" | "other";
   title: string;
   text: string;
+  createdAt: string;
+  /** diary pages carry the face she wrote them with */
+  emotion?: string;
+  /** yyyy-mm-dd the diary entry is about */
+  date?: string;
+}
+
+/**
+ * How Leela is doing, as a number that persists between sessions.
+ *
+ * Kept separate from the per-message emotion tag: that's how she feels about
+ * the sentence she's writing, this is the weather she's been living in since
+ * the last rollover. Only her expression of a low mood is gated by bond stage;
+ * the arithmetic always runs, so the diary has material from day one.
+ */
+export interface LeelaMood {
+  /** 0..100, baseline 60 */
+  value: number;
+  /** yyyy-mm-dd of the last daily settlement */
+  lastSettled?: string;
+  /** why she's where she is, surfaced in her context and the diary */
+  reason?: string;
+  /** resting expression held for the rest of the day after a miss */
+  lockedEmotion?: string;
+  lockedUntil?: string;
+  /** yyyy-mm-dd the disappointed opener already fired, so it lands once */
+  ackDate?: string;
+  /** set when a completion pulls her out of a low; consumed by the next turn */
+  reliefPending?: boolean;
+  /** ISO of the last HP damage, drives the cracked-glass decay */
+  damageAt?: string;
+}
+
+/** Something Leela asks of the user, so the bond has stakes on her side too. */
+export interface BondRequest {
+  id: string;
+  /** bond stage she was at when she asked */
+  stageIndex: number;
+  goal: {
+    kind: "streak" | "dailies";
+    target: number;
+    /** yyyy-mm-dd deadline, if she set one */
+    byDate?: string;
+  };
+  /** what she promises in return, in her words */
+  reward: string;
+  status: "open" | "done" | "lapsed";
   createdAt: string;
 }
 
@@ -237,6 +289,10 @@ export interface GameState {
   signature: Signature;
   /** notes / captions Leela leaves in the Service Record */
   keepsakes: Keepsake[];
+  /** how Leela is doing, driven by how the board goes */
+  leelaMood: LeelaMood;
+  /** things Leela has asked of the user */
+  bondRequests: BondRequest[];
   /** ISO date (yyyy-mm-dd) that cron last ran */
   lastCron?: string;
   createdAt: string;
@@ -266,6 +322,12 @@ export interface Settings {
   spontaneousEnd?: string;
   /** offer / run a short nightly debrief with Leela in the evening */
   nightlyDebrief?: boolean;
+  /**
+   * How strongly Leela reacts to a bad day. "full" lets her show it once you're
+   * past the first bond stage; "gentle" keeps the warmth but drops the visible
+   * disappointment; "off" disables the reactive layer entirely.
+   */
+  reactiveMood?: "off" | "gentle" | "full";
 }
 
 /** The full persisted payload that lives inside the .rpgsave file. */
