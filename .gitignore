@@ -29,3 +29,6 @@ Thumbs.db
 
 # cloudflare wrangler local state
 .wrangler/
+
+# scratch file used to compose commit messages
+COMMIT_MSG.txt
