@@ -34,19 +34,24 @@ import { buzzGain, buzzMilestone, glimmer } from "../game/feedback";
 
 const KEEPSAKE_CAP = 40;
 const DIARY_CAP = 400;
+const READ_CAP = 24;
 
 /**
- * Diary pages and keepsakes share one list but not one budget. Under a single
- * cap of 40 the diary would evict itself inside six weeks, and bond letters
- * would be competing with it for the same slots. 400 pages is roughly a year
- * and about 90KB in the save, which is small next to the history array.
+ * Diary pages, her reads, and keepsakes share one list but not one budget.
+ * Under a single cap of 40 the diary would evict itself inside six weeks. Reads
+ * get their own bucket for the same reason in miniature: she writes them often
+ * enough that on a shared budget they would slowly push out the bond letters,
+ * and there are only ever seven of those.
  */
 function capKeepsakes(list: Keepsake[]): Keepsake[] {
   let diary = 0;
+  let read = 0;
   let other = 0;
-  return list.filter((k) =>
-    k.kind === "diary" ? ++diary <= DIARY_CAP : ++other <= KEEPSAKE_CAP,
-  );
+  return list.filter((k) => {
+    if (k.kind === "diary") return ++diary <= DIARY_CAP;
+    if (k.kind === "read") return ++read <= READ_CAP;
+    return ++other <= KEEPSAKE_CAP;
+  });
 }
 
 /** Mood is a 0..100 scale; every write goes through this. */
@@ -229,7 +234,7 @@ interface UIState {
   activeTab: Tab;
   chatOpen: boolean;
   settingsOpen: boolean;
-  statsOpen: boolean;
+  recordOpen: boolean;
   suppliesOpen: boolean;
   wardrobeOpen: boolean;
   moodOpen: boolean;
@@ -264,7 +269,7 @@ interface StoreState extends UIState {
   setTab: (t: Tab) => void;
   setChatOpen: (v: boolean) => void;
   setSettingsOpen: (v: boolean) => void;
-  setStatsOpen: (v: boolean) => void;
+  setRecordOpen: (v: boolean) => void;
   setSuppliesOpen: (v: boolean) => void;
   setWardrobeOpen: (v: boolean) => void;
   setMoodOpen: (v: boolean) => void;
@@ -486,7 +491,7 @@ export const useStore = create<StoreState>((set, get) => ({
   activeTab: "dailies",
   chatOpen: false,
   settingsOpen: false,
-  statsOpen: false,
+  recordOpen: false,
   suppliesOpen: false,
   wardrobeOpen: false,
   moodOpen: false,
@@ -508,7 +513,7 @@ export const useStore = create<StoreState>((set, get) => ({
   setTab: (t) => set({ activeTab: t }),
   setChatOpen: (v) => set({ chatOpen: v }),
   setSettingsOpen: (v) => set({ settingsOpen: v }),
-  setStatsOpen: (v) => set({ statsOpen: v }),
+  setRecordOpen: (v) => set({ recordOpen: v }),
   setSuppliesOpen: (v) => set({ suppliesOpen: v }),
   setWardrobeOpen: (v) => set({ wardrobeOpen: v }),
   setMoodOpen: (v) => set({ moodOpen: v }),

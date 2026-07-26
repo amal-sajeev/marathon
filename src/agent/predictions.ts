@@ -49,7 +49,7 @@ export function softPredictions(state: GameState, now: Date = new Date()): SoftP
     out.push({
       id: `streak-${sample.id}`,
       tone: "deficit",
-      note: `"${sample.title}" has no streak and is still open. Offer to ease its repeatDays or lower difficulty — ask first, then update_task if they agree.`,
+      note: `"${sample.title}" has no streak and is still open. Offer to ease its repeatDays or lower difficulty. Ask first, then update_task if they agree.`,
     });
   } else if (broken.length > 3) {
     out.push({

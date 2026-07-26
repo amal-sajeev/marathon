@@ -227,11 +227,16 @@ export interface Signature {
 /** A lasting note or caption Leela leaves in the Service Record. */
 export interface Keepsake {
   id: string;
-  kind: "milestone" | "letter" | "ritual" | "diary" | "other";
+  /**
+   * "read" is her standing opinion of how the person is doing. The newest one
+   * is the current view; the older ones are kept so it can be watched changing,
+   * which is most of the point of having it.
+   */
+  kind: "milestone" | "letter" | "ritual" | "diary" | "read" | "other";
   title: string;
   text: string;
   createdAt: string;
-  /** diary pages carry the face she wrote them with */
+  /** diary pages and reads carry the face she wrote them with */
   emotion?: string;
   /** yyyy-mm-dd the diary entry is about */
   date?: string;

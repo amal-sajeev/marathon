@@ -968,22 +968,150 @@ select {
   letter-spacing: 0;
 }
 
-/* Her diary: correspondence, newest first, each page wearing a face. */
-.diary {
+/* ---------- service record ----------
+   An archive rather than a drawer. It gets the whole screen because a year of
+   diary pages inside an 86vh sheet is a peephole, and searching something you
+   can only see six lines of defeats the point of searching it. */
+.record {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding-top: 6px;
+  background: linear-gradient(180deg, rgba(8, 20, 28, 0.99), rgba(2, 6, 10, 1));
+  animation: fade-in 0.18s ease;
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
 }
-.diary-page {
+/* The archive is mostly prose, so it is held to a readable measure on a wide
+   screen instead of running the full width of a desktop window. Below that it
+   is edge to edge, which is where it actually gets read. */
+.record__head,
+.record__search,
+.record__tabs,
+.record__body {
+  width: 100%;
+  max-width: 720px;
+  margin-left: auto;
+  margin-right: auto;
+}
+.record__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 14px 16px 8px;
+}
+.record__titles { min-width: 0; }
+.record__title {
+  margin: 0;
+  font-family: var(--font-title);
+  font-size: 17px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--neon-soft);
+}
+.record__sub {
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 0.6px;
+}
+.record__actions { display: flex; gap: 8px; flex: 0 0 auto; }
+
+.record__search {
+  position: relative;
+  padding: 10px 16px 6px;
+}
+.record__clear {
+  position: absolute;
+  right: 24px;
+  top: 50%;
+  transform: translateY(-40%);
+  border: none;
+  background: none;
+  color: var(--muted);
+  font-size: 13px;
+  padding: 4px;
+}
+
+.record__tabs {
+  display: flex;
+  gap: 6px;
+  padding: 4px 16px 10px;
+}
+.record__tab {
+  flex: 1;
+  padding: 7px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--neon-wire);
+  background: rgba(10, 24, 32, 0.55);
+  color: var(--muted);
+  font-family: var(--font-title);
+  font-size: 11.5px;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+}
+.record__tab--on {
+  color: var(--neon-soft);
+  border-color: rgba(56, 230, 255, 0.55);
+  background: rgba(16, 44, 58, 0.75);
+  box-shadow: 0 0 12px rgba(56, 230, 255, 0.2) inset;
+}
+
+.record__body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 16px 28px;
+  -webkit-overflow-scrolling: touch;
+}
+.record__chips { margin-bottom: 10px; }
+.tag-chip__n { opacity: 0.65; font-size: 11px; }
+.record__count {
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+.record__month { margin-bottom: 18px; }
+.record__month-label {
+  position: sticky;
+  top: -12px;
+  z-index: 1;
+  margin: 0 -16px 8px;
+  padding: 6px 16px;
+  background: linear-gradient(180deg, rgba(4, 12, 18, 0.98), rgba(4, 12, 18, 0.86));
+  font-family: var(--font-title);
+  font-size: 11px;
+  letter-spacing: 1.6px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.record__section { margin-bottom: 20px; }
+.record__section-label {
+  margin: 0 0 8px;
+  font-family: var(--font-title);
+  font-size: 11px;
+  letter-spacing: 1.6px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* One filed entry. Her own writing is tinted violet and wears a face; the
+   game's own milestones stay in the cyan of the rest of the interface. */
+.entry {
   display: flex;
   gap: 10px;
   padding: 10px 12px;
+  margin-bottom: 8px;
   border-radius: 12px;
-  border: 1px solid rgba(185, 140, 255, 0.28);
+  border: 1px solid var(--neon-wire);
+  background: rgba(8, 20, 28, 0.45);
+}
+.entry--diary,
+.entry--read {
+  border-color: rgba(185, 140, 255, 0.28);
   background: rgba(20, 12, 30, 0.4);
 }
-.diary-page__face {
+.entry__face {
   flex: 0 0 auto;
   width: 44px;
   height: 44px;
@@ -991,20 +1119,100 @@ select {
   overflow: hidden;
   border: 1px solid rgba(185, 140, 255, 0.35);
 }
-.diary-page__body { min-width: 0; }
-.diary-page__date {
-  font-size: 10.5px;
+.entry__pip {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  margin-top: 7px;
+  border-radius: 50%;
+  background: var(--neon-soft);
+  box-shadow: 0 0 8px rgba(56, 230, 255, 0.6);
+}
+.entry__body { min-width: 0; flex: 1; }
+.entry__meta {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 3px;
+}
+.entry__kind {
+  font-size: 10px;
   letter-spacing: 1.4px;
   text-transform: uppercase;
   color: #c9a6ff;
-  margin-bottom: 4px;
 }
-.diary-page__text {
+.entry--milestone .entry__kind,
+.entry--letter .entry__kind,
+.entry--ritual .entry__kind,
+.entry--other .entry__kind { color: var(--neon-soft); }
+.entry__date { font-size: 10.5px; color: var(--muted); }
+.entry__title { font-size: 13px; color: var(--text); margin-bottom: 3px; }
+.entry__text {
+  margin: 0;
   font-size: 13px;
   line-height: 1.55;
   color: var(--text);
   font-style: italic;
 }
+.entry--milestone .entry__text,
+.entry--other .entry__text { font-style: normal; }
+.entry__facts {
+  margin-top: 6px;
+  font-size: 10.5px;
+  letter-spacing: 0.4px;
+  color: var(--muted);
+}
+
+/* Her standing read, pinned above the evidence it was formed from. */
+.read-now {
+  padding: 14px;
+  margin-bottom: 20px;
+  border-radius: 14px;
+  border: 1px solid rgba(185, 140, 255, 0.35);
+  background: linear-gradient(180deg, rgba(28, 16, 42, 0.7), rgba(14, 8, 22, 0.6));
+}
+.read-now__head { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.read-now__face {
+  flex: 0 0 auto;
+  width: 54px;
+  height: 54px;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid rgba(185, 140, 255, 0.45);
+}
+.read-now__label {
+  font-family: var(--font-title);
+  font-size: 11px;
+  letter-spacing: 1.6px;
+  text-transform: uppercase;
+  color: #c9a6ff;
+}
+.read-now__when { font-size: 11px; color: var(--muted); }
+.read-now__text {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text);
+  font-style: italic;
+}
+
+.insights { display: flex; flex-direction: column; gap: 8px; }
+.insight {
+  padding: 9px 12px;
+  border-radius: 10px;
+  border-left: 2px solid var(--neon-wire);
+  background: rgba(8, 20, 28, 0.45);
+}
+.insight--good { border-left-color: #48e6a0; }
+.insight--bad { border-left-color: #ff7a8a; }
+.insight__label {
+  font-size: 10px;
+  letter-spacing: 1.3px;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 2px;
+}
+.insight__detail { font-size: 13px; line-height: 1.5; color: var(--text); }
 
 .icon-btn {
   width: 34px;
@@ -1106,7 +1314,16 @@ select {
 
 /* ---------- chat ---------- */
 
-.chat { height: 76vh; }
+/* Reading scale and ink ramp for the message area. Kept local to .chat so the
+   neon chrome elsewhere in the app is unaffected. */
+.chat {
+  height: 82vh;
+  --chat-fs: 15.5px;
+  --chat-lh: 1.62;
+  --chat-ink: #e9f7fd;
+  --chat-ink-strong: #ffffff;
+  --chat-ink-dim: #9dbccc;
+}
 
 .chat__headline { display: flex; align-items: center; gap: 10px; }
 .chat__headicon {
@@ -1173,10 +1390,10 @@ select {
 .chat__body {
   flex: 1;
   overflow-y: auto;
-  padding: 10px 14px;
+  padding: 12px 14px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 14px;
 }
 .chat__intro {
   display: flex;
@@ -1238,35 +1455,35 @@ select {
 .msg-av--user svg { display: block; width: 100%; height: 100%; }
 
 .msg {
-  max-width: 78%;
-  padding: 10px 13px;
+  max-width: 85%;
+  padding: 12px 15px;
   border-radius: 14px;
-  font-size: 14px;
-  line-height: 1.4;
+  font-size: var(--chat-fs, 15.5px);
+  line-height: var(--chat-lh, 1.62);
   white-space: pre-wrap;
-  word-break: break-word;
+  overflow-wrap: break-word;
 }
 .msg--user {
-  background: linear-gradient(180deg, var(--neon-soft), var(--neon-deep));
-  color: #032029;
+  background: linear-gradient(180deg, rgba(19, 50, 64, 0.96), rgba(11, 32, 43, 0.98));
+  color: var(--chat-ink-strong, #fff);
+  border: 1px solid rgba(56, 230, 255, 0.42);
+  border-right: 3px solid var(--neon);
   border-bottom-right-radius: 5px;
-  box-shadow: 0 0 16px rgba(56, 230, 255, 0.35);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
 }
 .msg--agent {
-  background: linear-gradient(180deg, rgba(10, 24, 34, 0.9), rgba(5, 14, 20, 0.94));
-  color: var(--text);
+  background: #0a1a23;
+  color: var(--chat-ink, #e9f7fd);
   border-bottom-left-radius: 5px;
-  border: 1px solid rgba(56, 230, 255, 0.3);
-  box-shadow:
-    inset 0 0 12px rgba(56, 230, 255, 0.06),
-    0 6px 18px rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(56, 230, 255, 0.18);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
 }
 .msg--error {
   align-self: center;
   background: rgba(60, 12, 20, 0.85);
   border: 1px solid rgba(255, 90, 106, 0.5);
   color: #ffb8c0;
-  font-size: 13px;
+  font-size: 14px;
   box-shadow: 0 0 14px rgba(255, 90, 106, 0.2);
 }
 
@@ -1274,22 +1491,22 @@ select {
 .md { white-space: normal; }
 .md > :first-child { margin-top: 0; }
 .md > :last-child { margin-bottom: 0; }
-.md p { margin: 0 0 8px; }
+.md p { margin: 0 0 11px; }
 .md ul,
-.md ol { margin: 6px 0 8px; padding-left: 20px; }
-.md li { margin: 2px 0; }
+.md ol { margin: 9px 0 11px; padding-left: 23px; }
+.md li { margin: 5px 0; }
 .md li::marker { color: var(--neon); }
-.md strong { color: var(--neon-soft); font-weight: 800; }
+.md strong { color: var(--chat-ink-strong, #fff); font-weight: 700; }
 .md em { font-style: italic; }
 .md a { color: var(--neon); text-decoration: underline; }
 .md code {
   font-family: "Consolas", "SFMono-Regular", ui-monospace, monospace;
   font-size: 12.5px;
-  background: rgba(56, 230, 255, 0.12);
+  background: rgba(56, 230, 255, 0.1);
   border: 1px solid rgba(56, 230, 255, 0.3);
   border-radius: 5px;
   padding: 1px 5px;
-  color: var(--neon-soft);
+  color: var(--chat-ink, #e9f7fd);
 }
 .md pre {
   background: rgba(2, 10, 16, 0.8);
@@ -1309,15 +1526,15 @@ select {
 .md h1,
 .md h2,
 .md h3,
-.md h4 { margin: 8px 0 6px; font-size: 15px; color: var(--neon-soft); }
+.md h4 { margin: 8px 0 6px; font-size: 16px; color: var(--chat-ink-strong, #fff); }
 .md hr { border: none; border-top: 1px solid rgba(56, 230, 255, 0.3); margin: 8px 0; }
 
 .msg__tools {
   margin-top: 7px;
   padding-top: 7px;
-  border-top: 1px dashed rgba(56, 230, 255, 0.3);
-  font-size: 11.5px;
-  color: var(--neon-soft);
+  border-top: 1px solid rgba(255, 255, 255, 0.09);
+  font-size: 12.5px;
+  color: var(--chat-ink-dim, #9dbccc);
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -1407,9 +1624,10 @@ select {
   border: 1px solid rgba(56, 230, 255, 0.3);
   background: rgba(3, 10, 15, 0.85);
   color: var(--text);
-  font-size: 14px;
+  font-size: var(--chat-fs, 15.5px);
+  line-height: 1.45;
   resize: none;
-  max-height: 96px;
+  max-height: 120px;
 }
 .chat__input:focus {
   outline: none;
@@ -1438,7 +1656,7 @@ select {
   padding: 2px 4px 8px 52px;
 }
 .chip-reply {
-  font-size: 12.5px;
+  font-size: 13px;
   padding: 7px 12px;
   border-radius: 999px;
   border: 1px solid rgba(56, 230, 255, 0.4);

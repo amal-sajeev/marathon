@@ -3,6 +3,7 @@ import { useStore } from "../state/store";
 import { bondStage } from "../game/bond";
 import { MOOD_LOW, guiltActive, moodLabel } from "../game/mood";
 import { availableLore } from "../game/lore";
+import { insightBrief } from "../game/insights";
 import { describeGoal, openRequest, requestProgress } from "../game/requests";
 import { todayStr } from "../state/cron";
 import { SYSTEM_PROMPT } from "./systemPrompt";
@@ -121,6 +122,21 @@ function personalContext(unattended: boolean): string {
 
   lines.push(...moodLines(unattended));
   lines.push(...requestLines());
+
+  // Findings rather than raw numbers. Handed a task list she invents the
+  // pattern she wants to talk about; handed a worked-out finding she can
+  // argue with it, which is the difference between an opinion and a guess.
+  const brief = insightBrief(state, now);
+  if (brief) lines.push("", brief);
+
+  const read = state.keepsakes.find((k) => k.kind === "read");
+  if (read) {
+    lines.push(
+      "",
+      `YOUR CURRENT READ ON THEM, written ${read.title}: "${read.text}" Stay consistent with it unless the record has moved, and say so plainly when it has.`,
+    );
+  }
+
   return lines.join("\n");
 }
 

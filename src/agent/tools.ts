@@ -2,6 +2,7 @@ import { uid, useStore } from "../state/store";
 import type { ChecklistItem, Daily, Difficulty, Habit, Task, Todo } from "../state/types";
 import { todayStr } from "../state/cron";
 import { EMOTIONS, isEmotion } from "./emotions";
+import { deTrope } from "./style";
 import { bondStage } from "../game/bond";
 import { loreById } from "../game/lore";
 import { describeGoal, requestProgress } from "../game/requests";
@@ -617,6 +618,26 @@ export const TOOL_SPECS: ToolSpec[] = [
   {
     type: "function",
     function: {
+      name: "write_assessment",
+      description:
+        "Write your standing read on how they are actually doing: what you think is working, what isn't, and what you'd have them change. Three to five sentences, your honest opinion rather than a summary, addressed to them. Use the findings in the record as evidence and commit to a view. Write one when enough has changed to be worth revising, at most once every few days. It replaces the last one as your current read, and they can see all of them.",
+      parameters: {
+        type: "object",
+        properties: {
+          text: { type: "string", description: "Your read, in your own voice." },
+          emotion: {
+            type: "string",
+            enum: [...EMOTIONS],
+            description: "The face you'd wear writing it.",
+          },
+        },
+        required: ["text"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "write_sunday_letter",
       description:
         "Write this week's short Sunday letter into their Service Record (once per week). Call during a weekly review or when Sunday feels right. Keep it a few sentences, personal, not a stats dump.",
@@ -640,6 +661,16 @@ export const TOOL_SPECS: ToolSpec[] = [
     },
   },
 ];
+
+/**
+ * Text she writes in her own voice, rather than echoing back the user's words.
+ * Diary pages, letters and keepsakes never pass through the message parser, so
+ * they need the same style pass applied here or the tells survive in the
+ * Service Record long after the conversation has scrolled away.
+ */
+function prose(value: unknown): string {
+  return deTrope(String(value ?? "").trim());
+}
 
 function summarizeTask(t: Task): Record<string, unknown> {
   const base: Record<string, unknown> = {
@@ -860,7 +891,7 @@ export function runTool(
       return { ok: true, scored: task.title, direction: dir };
     }
     case "remember": {
-      const text = String(args.text ?? "").trim();
+      const text = prose(args.text);
       if (!text) return { ok: false, error: "Nothing to remember." };
       const category = args.category ? String(args.category) : undefined;
       const importance =
@@ -893,7 +924,7 @@ export function runTool(
       return { ok: true, gift: gift.text };
     }
     case "schedule_followup": {
-      const text = String(args.text ?? "").trim();
+      const text = prose(args.text);
       if (!text) return { ok: false, error: "Nothing to follow up on." };
       const dueDate = args.dueDate ? String(args.dueDate) : undefined;
       const f = store.addFollowup(text, dueDate);
@@ -932,7 +963,7 @@ export function runTool(
       return { ok: true, title: task.title, nickname: nickname || null };
     }
     case "add_bit": {
-      const text = String(args.text ?? "").trim();
+      const text = prose(args.text);
       if (!text) return { ok: false, error: "Nothing to save." };
       store.addBit(text);
       return { ok: true, bit: text };
@@ -952,8 +983,8 @@ export function runTool(
       };
     }
     case "add_keepsake": {
-      const title = String(args.title ?? "").trim();
-      const text = String(args.text ?? "").trim();
+      const title = prose(args.title);
+      const text = prose(args.text);
       const kind = (args.kind as "milestone" | "letter" | "ritual" | "other") || "other";
       const k = store.addKeepsake(title, text, kind);
       if (!k) return { ok: false, error: "Need a title and text." };
@@ -967,7 +998,7 @@ export function runTool(
       const kind = args.kind === "dailies" ? "dailies" : "streak";
       const target = Number(args.target);
       const byDate = String(args.byDate ?? "").trim() || undefined;
-      const reward = String(args.reward ?? "").trim();
+      const reward = prose(args.reward);
       const loreId = String(args.loreId ?? "").trim() || undefined;
       if (!reward) return { ok: false, error: "Say what they get out of it." };
       if (loreId && !loreById(loreId)) return { ok: false, error: "No such lore id." };
@@ -1010,13 +1041,22 @@ export function runTool(
       return { ok: true, gist: entry.gist };
     }
     case "write_diary": {
-      const text = String(args.text ?? "").trim();
+      const text = prose(args.text);
       if (!text) return { ok: false, error: "Need something to write." };
       const raw = String(args.emotion ?? "").trim().toLowerCase();
       const emotion = isEmotion(raw) ? raw : "neutral";
       const date = diaryDate ?? todayStr();
       const k = store.addKeepsake(prettyDate(date), text, "diary", { emotion, date });
       return { ok: true, id: k?.id ?? null, date };
+    }
+    case "write_assessment": {
+      const text = prose(args.text);
+      if (!text) return { ok: false, error: "Need something to say." };
+      const raw = String(args.emotion ?? "").trim().toLowerCase();
+      const emotion = isEmotion(raw) ? raw : "neutral";
+      const date = todayStr();
+      const k = store.addKeepsake(prettyDate(date), text, "read", { emotion, date });
+      return { ok: true, id: k?.id ?? null };
     }
     case "write_sunday_letter": {
       const today = new Date();
@@ -1027,9 +1067,9 @@ export function runTool(
       if (store.state.engagement.lastSundayLetter === key) {
         return { ok: true, already: true };
       }
-      const text = String(args.text ?? "").trim();
+      const text = prose(args.text);
       if (!text) return { ok: false, error: "Need letter text." };
-      const title = String(args.title ?? "").trim() || "Sunday letter";
+      const title = prose(args.title) || "Sunday letter";
       const k = store.addKeepsake(title, text, "letter");
       store.markSundayLetter(key);
       return { ok: true, id: k?.id ?? null };

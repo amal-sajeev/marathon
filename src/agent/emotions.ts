@@ -1,3 +1,5 @@
+import { deTrope } from "./style";
+
 /**
  * Leela's emotional range. Each reply is tagged with one of these (see
  * systemPrompt), which drives her face icon and the chat background art.
@@ -33,6 +35,9 @@ const CHIPS_RE = /\[\[\s*chips:\s*([^\]]+)\]\]/i;
  * Pull a leading `[[emotion]]` tag and an optional `[[chips: a | b | c]]` tag
  * off a message. Returns the resolved emotion (falling back to "neutral"), any
  * suggested quick replies, and the message text with both tags removed.
+ *
+ * Every message she sends passes through here, chat and check-ins alike, so
+ * this is also where her prose gets its style pass.
  */
 export function extractEmotion(content: string): {
   emotion: Emotion;
@@ -55,10 +60,10 @@ export function extractEmotion(content: string): {
   }
 
   const match = text.match(TAG_RE);
-  if (!match) return { emotion: "neutral", text, chips };
+  if (!match) return { emotion: "neutral", text: deTrope(text), chips };
   const key = match[1].toLowerCase();
   const emotion = isEmotion(key) ? key : "neutral";
-  return { emotion, text: text.slice(match[0].length), chips };
+  return { emotion, text: deTrope(text.slice(match[0].length)), chips };
 }
 
 const base = import.meta.env.BASE_URL;

@@ -7,7 +7,7 @@ import { SettingsPanel } from "./components/SettingsPanel";
 import { Toasts } from "./components/Toasts";
 import { Celebrate } from "./components/Celebrate";
 import { FallenOverlay } from "./components/FallenOverlay";
-import { StatsPanel } from "./components/StatsPanel";
+import { ServiceRecord } from "./components/ServiceRecord";
 import { SuppliesPanel } from "./components/SuppliesPanel";
 import { WardrobePanel } from "./components/WardrobePanel";
 import { MoodSheet } from "./components/MoodSheet";
@@ -25,7 +25,7 @@ export function App() {
   const ready = useStore((s) => s.ready);
   const setChatOpen = useStore((s) => s.setChatOpen);
   const setSettingsOpen = useStore((s) => s.setSettingsOpen);
-  const setStatsOpen = useStore((s) => s.setStatsOpen);
+  const setRecordOpen = useStore((s) => s.setRecordOpen);
   const setSuppliesOpen = useStore((s) => s.setSuppliesOpen);
   const fileName = useStore((s) => s.fileName);
   const saveStatus = useStore((s) => s.saveStatus);
@@ -102,7 +102,7 @@ export function App() {
           </button>
           <button
             className="icon-btn"
-            onClick={() => setStatsOpen(true)}
+            onClick={() => setRecordOpen(true)}
             aria-label="Service record"
           >
             {"\u25A6"}
@@ -139,7 +139,7 @@ export function App() {
       <FallenOverlay />
       <ChatPanel />
       <SettingsPanel />
-      <StatsPanel />
+      <ServiceRecord />
       <SuppliesPanel />
       <WardrobePanel />
       <MoodSheet />
