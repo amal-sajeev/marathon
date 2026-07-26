@@ -1,21 +1,35 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { faceCandidates, markFaceFailed, type Emotion } from "./emotions";
+import {
+  faceCandidates,
+  identityCandidates,
+  markFaceFailed,
+  type Emotion,
+} from "./emotions";
 
 /**
  * Leela's small profile picture. It swaps to the art matching her current mood
  * (with a brief glitch on change) and walks a WebP -> PNG -> neutral candidate
  * list, so a mood without art still shows a sensible face. Meant to live inside
  * a fixed-size round/rounded frame.
+ *
+ * Pass `fixed` for surfaces that should read as her identity rather than her
+ * state, which pins the art to neutral-1.
  */
 export function FaceAvatar({
-  emotion,
+  emotion = "neutral",
   crack = 0,
+  fixed = false,
 }: {
-  emotion: Emotion;
+  emotion?: Emotion;
   /** 0..1 fracture overlay, decaying over the day after a missed daily */
   crack?: number;
+  /** Pin to her identity art and ignore `emotion`. */
+  fixed?: boolean;
 }) {
-  const candidates = useMemo(() => faceCandidates(emotion), [emotion]);
+  const candidates = useMemo(
+    () => (fixed ? identityCandidates() : faceCandidates(emotion)),
+    [emotion, fixed],
+  );
   const [idx, setIdx] = useState(0);
   const [glitch, setGlitch] = useState(false);
   const prev = useRef<Emotion>(emotion);

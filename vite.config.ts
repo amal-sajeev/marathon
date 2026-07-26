@@ -10,7 +10,9 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: "autoUpdate",
-      includeAssets: ["favicon.svg", "icons/icon.svg", "icons/icon-maskable.svg"],
+      // icon.svg is still the Welcome crest; the old maskable SVG is unused now
+      // that the manifest points at Leela's raster icons.
+      includeAssets: ["favicon.svg", "icons/icon.svg"],
       manifest: {
         name: "Marathon",
         short_name: "Marathon",
@@ -22,17 +24,25 @@ export default defineConfig({
         orientation: "portrait",
         start_url: ".",
         scope: ".",
+        // Leela's face is the home-screen icon. Raster only: the maskable variant
+        // needs a real safe-zone inset, and iOS ignores SVG entirely.
         icons: [
           {
-            src: "icons/icon.svg",
-            sizes: "any",
-            type: "image/svg+xml",
+            src: "icons/leela-192.png",
+            sizes: "192x192",
+            type: "image/png",
             purpose: "any",
           },
           {
-            src: "icons/icon-maskable.svg",
-            sizes: "any",
-            type: "image/svg+xml",
+            src: "icons/leela-512.png",
+            sizes: "512x512",
+            type: "image/png",
+            purpose: "any",
+          },
+          {
+            src: "icons/leela-maskable-512.png",
+            sizes: "512x512",
+            type: "image/png",
             purpose: "maskable",
           },
         ],

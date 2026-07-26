@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "../state/store";
 import { AssetImage } from "../components/AssetImage";
 import { Markdown } from "../components/Markdown";
-import { runAgentTurn } from "./mistral";
+import { runAgentTurn, type ToolEvent } from "./mistral";
 import { buildConversationHistory } from "./summarize";
 import { nextId, useChat, type NewMessage } from "./chatStore";
 import { FaceAvatar } from "./FaceAvatar";
@@ -51,6 +51,46 @@ const QUICK_PROMPTS = [
   "Set me up for a productive workday",
   "Give me some rewards to work toward",
 ];
+
+/** Below this many actions the list is short enough to just show. */
+const TOOL_FOLD_AT = 3;
+
+function toolLabel(e: ToolEvent): string {
+  const verb = TOOL_VERB[e.name] ?? e.name;
+  const created = e.result?.created;
+  if (created && typeof created === "object") {
+    const title = (created as { title?: string }).title;
+    if (title) return `${verb}: ${title}`;
+  }
+  return verb;
+}
+
+/** What Leela did during a turn. Long runs fold away so they don't bury the reply. */
+function ToolList({ events }: { events: ToolEvent[] }) {
+  const rows = events.map((e, i) => (
+    <div key={i} className="msg__tool">
+      <span aria-hidden="true">{"\u2726"}</span>
+      <span>{toolLabel(e)}</span>
+    </div>
+  ));
+
+  if (events.length < TOOL_FOLD_AT) {
+    return <div className="msg__tools">{rows}</div>;
+  }
+
+  return (
+    <details className="msg__tools msg__tools--fold">
+      <summary>
+        <span aria-hidden="true">{"\u2726"}</span>
+        <span>{events.length} actions</span>
+        <span className="msg__tools-caret" aria-hidden="true">
+          {"\u2304"}
+        </span>
+      </summary>
+      <div className="msg__tools-list">{rows}</div>
+    </details>
+  );
+}
 
 // Minimal typing for the (prefixed) Web Speech API.
 type SpeechRec = {
@@ -282,20 +322,7 @@ export function ChatPanel() {
                 <div className={`msg ${m.role === "user" ? "msg--user" : "msg--agent"}`}>
                   {m.role === "assistant" ? <Markdown text={m.content} /> : m.content}
                   {m.toolEvents && m.toolEvents.length > 0 && (
-                    <div className="msg__tools">
-                      {m.toolEvents.map((e, i) => (
-                        <div key={i} className="msg__tool">
-                          <span>{"\u2726"}</span>
-                          <span>
-                            {TOOL_VERB[e.name] ?? e.name}
-                            {typeof e.result?.created === "object" &&
-                            e.result.created
-                              ? `: ${(e.result.created as { title?: string }).title ?? ""}`
-                              : ""}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
+                    <ToolList events={m.toolEvents} />
                   )}
                 </div>
               </div>

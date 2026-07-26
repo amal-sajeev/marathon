@@ -1535,11 +1535,43 @@ select {
   border-top: 1px solid rgba(255, 255, 255, 0.09);
   font-size: 12.5px;
   color: var(--chat-ink-dim, #9dbccc);
+  white-space: normal;
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
 .msg__tool { display: flex; gap: 6px; align-items: center; }
+
+/* long action runs fold behind a one-line summary */
+.msg__tools--fold { display: block; }
+.msg__tools--fold > summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+  transition: color 0.15s ease;
+}
+.msg__tools--fold > summary::-webkit-details-marker { display: none; }
+.msg__tools--fold > summary:hover { color: var(--neon-soft); }
+.msg__tools--fold > summary:focus-visible {
+  outline: 1px solid var(--neon-wire);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+.msg__tools-caret {
+  font-size: 14px;
+  line-height: 1;
+  transition: transform 0.15s ease;
+}
+.msg__tools--fold[open] .msg__tools-caret { transform: rotate(180deg); }
+.msg__tools-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 6px;
+}
 
 .typing {
   align-self: flex-start;

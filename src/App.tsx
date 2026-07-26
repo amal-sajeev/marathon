@@ -15,7 +15,7 @@ import { BondMilestone } from "./components/BondMilestone";
 import { Welcome } from "./components/Welcome";
 import { ChatPanel } from "./agent/ChatPanel";
 import { FaceAvatar } from "./agent/FaceAvatar";
-import { useCrack, useRestingFace } from "./agent/useLeelaFace";
+import { useCrack } from "./agent/useLeelaFace";
 import { accentStyle } from "./game/accent";
 import { useBondWatcher } from "./game/useBondWatcher";
 import { bondStage, stageColor } from "./game/bond";
@@ -31,9 +31,8 @@ export function App() {
   const saveStatus = useStore((s) => s.saveStatus);
   const cosmetics = useStore((s) => s.state.cosmetics);
   const bond = useStore((s) => s.state.bond);
-  // The orb is the only place her mood shows without opening anything, so a
-  // day that went badly is visible from the board.
-  const restingFace = useRestingFace();
+  // The orb wears her identity face, so the cracked glass is what carries a bad
+  // day out to the board without anything being opened.
   const crack = useCrack();
   const setAddOpen = useStore((s) => s.setAddOpen);
   useBondWatcher();
@@ -130,7 +129,7 @@ export function App() {
         onClick={() => setChatOpen(true)}
         aria-label="Talk to your companion"
       >
-        <FaceAvatar emotion={restingFace} crack={crack} />
+        <FaceAvatar fixed crack={crack} />
       </button>
 
       <Toasts />

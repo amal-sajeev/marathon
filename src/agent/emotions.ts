@@ -122,3 +122,14 @@ export function faceCandidates(emotion: Emotion): string[] {
   const usable = list.filter((s) => !failed.has(s));
   return usable.length > 0 ? [...new Set(usable)] : [NEUTRAL_SRC];
 }
+
+/**
+ * Sources for her fixed identity face. Unlike faceCandidates this skips the
+ * random variant pick, so a surface pinned to it always shows neutral-1 instead
+ * of flipping between the two neutral images on every mount.
+ */
+export function identityCandidates(): string[] {
+  const list = [ICON_SRC, facePath("neutral-1.png")];
+  const usable = list.filter((s) => !failed.has(s));
+  return usable.length > 0 ? [...new Set(usable)] : [ICON_SRC];
+}

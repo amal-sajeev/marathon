@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "faces": "node scripts/convert-faces.mjs",
-    "notify-icons": "node scripts/gen-notify-icons.mjs"
+    "notify-icons": "node scripts/gen-notify-icons.mjs",
+    "app-icons": "node scripts/gen-app-icons.mjs"
   },
   "dependencies": {
     "dompurify": "^3.4.12",
