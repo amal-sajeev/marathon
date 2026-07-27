@@ -830,6 +830,9 @@ select {
   bottom: 24px;
   width: 68px;
   height: 68px;
+  /* Default button padding would inset her portrait and leak the gradient
+     below out around it. */
+  padding: 0;
   border-radius: 50%;
   border: 1px solid rgba(127, 241, 255, 0.7);
   background:
@@ -862,6 +865,8 @@ select {
   will-change: transform;
   -webkit-mask: radial-gradient(circle, transparent 60%, #000 62%);
   mask: radial-gradient(circle, transparent 60%, #000 62%);
+  /* Above her portrait, which now fills the orb edge to edge. */
+  z-index: 3;
 }
 .agent-fab img {
   position: relative;
